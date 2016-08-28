@@ -43,12 +43,18 @@
 
 // region includes
 #include <i2c_t3.h>
-#include <SD.h>
+#include <Data_module.h>
 #include <SPI.h>
 // end region
 
 // region macro definitions
 #define espSerial Serial2
+#define debugSerialBaud 115200
+#define espSerialBaud 9600
+#define initFileName "init/init"
+#define dataFileName "data/data"
+#define initExtension "txt"
+#define dataExtension "csv"
 // end region
 
 // region pin definitions
@@ -62,15 +68,15 @@ int8_t sdChipSelect = 6;
 boolean serialDebugMode = true;
 // end region
 
-void setup() {
-  if (serialDebugMode) {
-    // block until serial sent to micro
-    Serial.begin(115200);
-    
-    while(!Serial.available()){}
-  } 
+// region library instantiation
+Data_module dataModule(sdChipSelect, debugSerialBaud, initFileName, dataFileName);
+// end region
 
-  // TODO: Sensor setup, SD setup, ESP handshaking and blocking to wait on commands
+void setup() {
+  dataModule.setDebugMode(serialDebugMode);
+  dataModule.initialize();
+
+  // TODO: Sensor setup, ESP handshaking and blocking to wait on commands
 }
 
 void loop() {
