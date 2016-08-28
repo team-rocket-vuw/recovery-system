@@ -62,9 +62,6 @@ class ESP8266 {
     ESP8266(HardwareSerial &uart, uint32_t baud = 9600);
 #endif
 
-
-  void setSerial(SoftwareSerial &uart, uint32_t baud = 9600);
-
     /**
      * Verify ESP8266 whether live or not.
      *

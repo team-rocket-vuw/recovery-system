@@ -60,14 +60,6 @@ ESP8266::ESP8266()
   // no op
 }
 
-void ESP8266::setSerial(SoftwareSerial &uart, uint32_t baud)
-{
-
-  m_puart = &uart;
-  m_puart->begin(baud);
-  rx_empty();
-}
-
 bool ESP8266::kick(void)
 {
     return eAT();
