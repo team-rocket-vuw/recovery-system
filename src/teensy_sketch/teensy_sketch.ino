@@ -43,6 +43,7 @@
 
 // region includes
 #include <i2c_t3.h>
+#include <ESP8266.h>
 #include <Data_module.h>
 #include <SPI.h>
 // end region
@@ -69,6 +70,7 @@ boolean serialDebugMode = true;
 // end region
 
 // region library instantiation
+ESP8266 wifi(espSerial);
 Data_module dataModule(sdChipSelect, debugSerialBaud, initFileName, dataFileName);
 // end region
 
@@ -76,11 +78,23 @@ void setup() {
   dataModule.setDebugMode(serialDebugMode);
   dataModule.initialize();
 
-  // TODO: Sensor setup, ESP handshaking and blocking to wait on commands
+  runInitLoop();
+  // TODO: Sensor setup
 }
 
 void loop() {
+  runMainLoop();
+}
+
+// ------------------------------------------------------------
+//                      Loop declarations
+// ------------------------------------------------------------
+
+void runMainLoop() {
   // TODO: Read sensors, detect apogee, send radio, activate buzzer
 }
 
+void runInitLoop() {
+  // TODO: ESP handshaking and blocking to wait on commands
+}
 
