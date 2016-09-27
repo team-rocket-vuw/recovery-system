@@ -33,9 +33,9 @@ boolean Data_module::initialize()
     println("Initialising card");
     _initFileName = getIncrementedFileName(_initFileName, "txt");
     _dataFileName = getIncrementedFileName(_dataFileName, "csv");
-    return true;
   }
 
+  return true;
 }
 
 // NOTE: Must be called before initialize()

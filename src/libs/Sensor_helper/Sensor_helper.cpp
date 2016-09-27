@@ -378,7 +378,7 @@ float Sensor_helper::getAltitude()
   return ((145366.45*(1.0 - pow((_pressure/1013.25), 0.190284)))/3.2808) - _altitudeOffset;
 }
 
-void getIMUAccelData(float * data)
+void Sensor_helper::getIMUAccelData(float * data)
 {
   readAccelData(_accelCount);
   _aRes = getAccelRes();
@@ -390,7 +390,7 @@ void getIMUAccelData(float * data)
   }
 }
 
-void getIMUGyroData(float * data)
+void Sensor_helper::getIMUGyroData(float * data)
 {
   readGyroData(_gyroCount);
   _gRes = getGyroRes();
@@ -402,7 +402,7 @@ void getIMUGyroData(float * data)
   }
 }
 
-void getIMUMagData(float * data)
+void Sensor_helper::getIMUMagData(float * data)
 {
   readMagData(_magCount);
   _mRes = getMagRes();

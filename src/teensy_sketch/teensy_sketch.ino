@@ -107,31 +107,21 @@ void setup() {
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
 
+  // block until serial available. TODO: Replace with ESP block
   while(!Serial.available());
+  
   // Sensor setup
   // TODO: Check return of each to ensure success
   helper.setupMPU9250();
   helper.setupAK8963();
   helper.setupMS5637();
+  delay(500);
 }
 
 void loop() {
   readIMU();
-
+  delay(200);
   dataModule.println(getIMULogString(accelData)+getIMULogString(gyroData)+getIMULogString(magData));
-}
-
-// ------------------------------------------------------------
-//                      Loop declarations
-// ------------------------------------------------------------
-
-void runMainLoop() {
-  // TODO: Read sensors, detect apogee, send radio, activate buzzer
-}
-
-void runInitLoop() {
-  // TODO: ESP handshaking and blocking to wait on commands
-  while (1);
 }
 
 // ------------------------------------------------------------
@@ -147,5 +137,5 @@ void readIMU() {
 
 // Simple function for building a CSV formatted string from a 3 element array
 String getIMULogString(float * data) {
-  return (String(data[0], DEC) + "," + String(data[1]), DEC) + "," + String(data[2], DEC) + ",");
+  return (String(data[0], DEC) + "," + String(data[1], DEC) + "," + String(data[2], DEC) + ",");
 }
