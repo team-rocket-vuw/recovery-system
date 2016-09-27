@@ -16,49 +16,49 @@ Sensor_helper::Sensor_helper(uint8_t AScale, uint8_t GScale, uint8_t MScale, uin
 
 boolean Sensor_helper::setupMPU9250()
 {
-  _dataModule.println("Reading who-am-i byte of MPU9250");
-  byte c = helper.readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
+  _dataModule->println("Reading who-am-i byte of MPU9250");
+  byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
 
   _dataModule.println("MPU9250 I AM " + String(c, HEX) + ", I should be " + String(0x71, HEX));
 
   if (c == 0x71) {
-    _dataModule.println("MPU9250 online");
-    _dataModule.println("Calibrating...\n\n");
+    _dataModule->println("MPU9250 online");
+    _dataModule->println("Calibrating...\n\n");
 
     calibrateMPU9250(_gyroBias, _accelBias);
 
-    _dataModule.println("Accelerometer bias: (mg)");
-    _dataModule.println("X: " + String(1000*accelBias[0]) + " Y: " + String(1000*accelBias[1]) + " Z: " + String(1000*accelBias[2]));
+    _dataModule->println("Accelerometer bias: (mg)");
+    _dataModule->println("X: " + String(1000*accelBias[0]) + " Y: " + String(1000*accelBias[1]) + " Z: " + String(1000*accelBias[2]));
 
-    _dataModule.println("Gyro bias: (o/s)");
-    _dataModule.println("X: " + String(gyroBias[0]) + " Y: " + String(gyroBias[1]) + " Z: " + String(gyroBias[2]));
+    _dataModule->println("Gyro bias: (o/s)");
+    _dataModule->println("X: " + String(gyroBias[0]) + " Y: " + String(gyroBias[1]) + " Z: " + String(gyroBias[2]));
 
     initMPU9250();
 
-    _dataModule.println("\nMPU9250 initialized for active data mode....");
+    _dataModule->println("\nMPU9250 initialized for active data mode....");
     return true;
   } else {
-    _dataModule.println("MPU9250 failed to initialise");
+    _dataModule->println("MPU9250 failed to initialise");
     return false;
   }
 }
 
 boolean Sensor_helper::setupAK8963()
 {
-  _dataModule.println("Reading who-am-i byte of magnetometer");
+  _dataModule->println("Reading who-am-i byte of magnetometer");
   byte d = readByte(AK8963_ADDRESS, WHO_AM_I_AK8963);  // Read WHO_AM_I register for AK8963
-  _dataModule.println("AK8963 I AM " + String(d, HEX) + ", I should be " + String(0x48, HEX));
+  _dataModule->println("AK8963 I AM " + String(d, HEX) + ", I should be " + String(0x48, HEX));
 
   if (d == 0x48) {
     initAK8963(_magCalibration);
 
-    _dataModule.println("Calibrating...");
-    _dataModule.println("X-Axis sensitivity adjustment value " + String(_magCalibration[0], 2));
-    _dataModule.println("Y-Axis sensitivity adjustment value " + String(_magCalibration[1], 2));
-    _dataModule.println("Z-Axis sensitivity adjustment value " + String(_magCalibration[2], 2));
-    _dataModule.println("\nAK8963 initialized for active data mode....");
+    _dataModule->println("Calibrating...");
+    _dataModule->println("X-Axis sensitivity adjustment value " + String(_magCalibration[0], 2));
+    _dataModule->println("Y-Axis sensitivity adjustment value " + String(_magCalibration[1], 2));
+    _dataModule->println("Z-Axis sensitivity adjustment value " + String(_magCalibration[2], 2));
+    _dataModule->println("\nAK8963 initialized for active data mode....");
   } else {
-    _dataModule.println("AK8963 failed to initialise");
+    _dataModule->println("AK8963 failed to initialise");
     return false;
   }
 }
@@ -67,24 +67,24 @@ boolean Sensor_helper::setupMS5637()
 {
   resetMS5637();
   delay(100);
-  _dataModule.println("MS5637 pressure sensor reset...");
+  _dataModule->println("MS5637 pressure sensor reset...");
   // Read PROM data from MS5637 pressure sensor
   readPromMS5637(_pcal);
-  _dataModule.println("PROM data read:");
-  _dataModule.println("C0 = " + String(_pcal[0]));
+  _dataModule->println("PROM data read:");
+  _dataModule->println("C0 = " + String(_pcal[0]));
   unsigned char refCRC = Pcal[0] >> 12;
-  _dataModule.println("C1 = " + String(_pcal[1]));
-  _dataModule.println("C2 = " + String(_pcal[2]));
-  _dataModule.println("C3 = " + String(_pcal[3]));
-  _dataModule.println("C4 = " + String(_pcal[4]));
-  _dataModule.println("C5 = " + String(_pcal[5]));
-  _dataModule.println("C6 = " + String(_pcal[6]));
+  _dataModule->println("C1 = " + String(_pcal[1]));
+  _dataModule->println("C2 = " + String(_pcal[2]));
+  _dataModule->println("C3 = " + String(_pcal[3]));
+  _dataModule->println("C4 = " + String(_pcal[4]));
+  _dataModule->println("C5 = " + String(_pcal[5]));
+  _dataModule->println("C6 = " + String(_pcal[6]));
 
   _nCRC = checkMS5637CRC(_pcal);  //calculate checksum to ensure integrity of MS5637 calibration data
-  dataModule.println("Checksum: " + String(_nCRC) + ", should be: " + String(refCRC));
+  _dataModule->println("Checksum: " + String(_nCRC) + ", should be: " + String(refCRC));
 
   if (_nCRC != refCRC) {
-    _dataModule.println("MS5637 checksum integrity check failed");
+    _dataModule->println("MS5637 checksum integrity check failed");
     return false;
   }
 
