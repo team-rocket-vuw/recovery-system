@@ -84,11 +84,9 @@ int8_t Gscale = GFS_250DPS;
 int8_t Mscale = MFS_16BITS;  // Choose either 14-bit or 16-bit magnetometer resolution
 int8_t Mmode = 0x02;         // 2 for 8Hz, 6 for 100Hz continuous
 
-int16_t accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
-int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
-int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output
-
-float ax,ay,az, gx, gy, gz, mx, my, mz;
+float accelData[3] = {0,0,0}; // 3-axis accelerometer readings defines as x,y,z output in ms^-1
+float gyroData[3]  = {0,0,0}; // 3-axis gyro readings defines as x,y,z output in degrees per second
+float magData[3]   = {0,0,0}; // 3-axis magnetometer readings defines as x,y,z output in milliGauss
 // end region
 
 // region flags
@@ -99,12 +97,12 @@ boolean altInit = false;
 
 // region library instantiation
 Data_module dataModule(sdChipSelect, debugSerialBaud, initFileName, dataFileName);
-Sensor_helper helper(Ascale, Gscale, Mscale, Mmode, &dataModule);
+Sensor_helper helper(Ascale, Gscale, Mscale, Mmode, &dataModule); // Data_module required for sensor debug
 // end region
 
 void setup() {
   dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
-  dataModule.initialize(); // setup data module
+  dataModule.initialize();                  // setup data module
 
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
@@ -115,12 +113,12 @@ void setup() {
   helper.setupMPU9250();
   helper.setupAK8963();
   helper.setupMS5637();
-
-  runInitLoop();
 }
 
 void loop() {
-  runMainLoop();
+  readIMU();
+
+  dataModule.println(getIMULogString(accelData)+getIMULogString(gyroData)+getIMULogString(magData));
 }
 
 // ------------------------------------------------------------
@@ -140,4 +138,14 @@ void runInitLoop() {
 //                   Function definitions
 // ------------------------------------------------------------
 
+// Function which reads each 3-axis sensor on the SMT IMU
+void readIMU() {
+  helper.getIMUAccelData(accelData);
+  helper.getIMUGyroData(gyroData);
+  helper.getIMUMagData(magData);
+}
 
+// Simple function for building a CSV formatted string from a 3 element array
+String getIMULogString(float * data) {
+  return (String(data[0], DEC) + "," + String(data[1]), DEC) + "," + String(data[2], DEC) + ",");
+}

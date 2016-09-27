@@ -202,20 +202,16 @@ class Sensor_helper
     // sensor value returing functions
     float getAltitude();
 
+    void getIMUAccelData(float * dest); // get IMU x-y-z accelerometer readings
+    void getIMUGyroData(float * dest); // get IMU x-y-z gyroscope readings
+    void getIMUMagData(float * dest);  // get IMU x-y-z magnetometer readings
+
     // utility functions
     void writeByte(uint8_t address, uint8_t subAddress, uint8_t data);
     void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * dest);
     uint8_t readByte(uint8_t address, uint8_t subAddress);
 
-    // data specific functions
-    void readAccelData(int16_t * destination);
-    float getAccelRes();
 
-    void readGyroData(int16_t * destination);
-    float getGyroRes();
-
-    void readMagData(int16_t * destination);
-    float getMagRes();
 
     void resetMS5637();
     void readPromMS5637(uint16_t * destination);
@@ -227,6 +223,16 @@ class Sensor_helper
     void initMPU9250();
     void initAK8963(float * destination);
     void calibrateMPU9250(float * dest1, float * dest2);
+
+    // data specific functions
+    void readAccelData(int16_t * destination);
+    float getAccelRes();
+
+    void readGyroData(int16_t * destination);
+    float getGyroRes();
+
+    void readMagData(int16_t * destination);
+    float getMagRes();
 
     uint8_t _ascale, _gscale, _mscale, _mmode;
 
@@ -244,6 +250,12 @@ class Sensor_helper
     double _dT, _OFFSET, _SENS, _T2, _OFFSET2, _SENS2;  // First order and second order corrections for raw S5637 temperature and pressure data
     double _temperature, _pressure; // stores MS5637 pressures sensor pressure and temperature
     float _altitudeOffset; // altitude offset calculated when MS5637 set up
+
+    int16_t _accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
+    int16_t _gyroCount[3];   // Stores the 16-bit signed gyro sensor output
+    int16_t _magCount[3];    // Stores the 16-bit signed magnetometer sensor output
+
+    float _aRes, _gRes, _mRes;
 
 };
 

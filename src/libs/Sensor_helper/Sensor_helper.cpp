@@ -378,6 +378,43 @@ float Sensor_helper::getAltitude()
   return ((145366.45*(1.0 - pow((_pressure/1013.25), 0.190284)))/3.2808) - _altitudeOffset;
 }
 
+void getIMUAccelData(float * data)
+{
+  readAccelData(_accelCount);
+  _aRes = getAccelRes();
+
+  // Three axis accelerometer reading calculation
+  for (int i = 0; i < 3; i++)
+  {
+    data[i] = (float)_accelCount[i]*_aRes;
+  }
+}
+
+void getIMUGyroData(float * data)
+{
+  readGyroData(_gyroCount);
+  _gRes = getGyroRes();
+
+  // Three axis gyro reading calculation
+  for (int i = 0; i < 3; i++)
+  {
+    data[i] = (float)_gyroCount[i]*_gRes;
+  }
+}
+
+void getIMUMagData(float * data)
+{
+  readMagData(_magCount);
+  _mRes = getMagRes();
+
+  // Calculate the magnetometer values in milliGauss
+  // Include factory calibration per data sheet and user environmental corrections
+  for (int i = 0; i < 3; i++)
+  {
+    data[i] = (float) _magCount[0]*_mRes*_magCalibration[0] - _magbias[0];
+  }
+}
+
 // END REGION
 
 void Sensor_helper::writeByte(uint8_t address, uint8_t subAddress, uint8_t data)
