@@ -6,6 +6,7 @@
 #define Sensor_helper_h
 
 #include "Arduino.h"
+#include "Data_module.h"
 
 // Register definitions
 
@@ -193,11 +194,13 @@
 class Sensor_helper
 {
   public:
-    Sensor_helper(uint8_t AScale, uint8_t GScale, uint8_t MScale, uint8_t Mmode);
-    // init and basic helpers
-    void initMPU9250();
-    void initAK8963(float * destination);
-    void calibrateMPU9250(float * dest1, float * dest2);
+    Sensor_helper(uint8_t AScale, uint8_t GScale, uint8_t MScale, uint8_t Mmode, Data_module * dataModule);
+    boolean setupMPU9250();
+    boolean setupMS5637();
+    boolean setupAK8963();
+
+    // sensor value returing functions
+    float getAltitude();
 
     // utility functions
     void writeByte(uint8_t address, uint8_t subAddress, uint8_t data);
@@ -220,7 +223,25 @@ class Sensor_helper
     unsigned char checkMS5637CRC(uint16_t * n_prom);
 
   private:
+    // init and basic helpers
+    void initMPU9250();
+    void initAK8963(float * destination);
+    void calibrateMPU9250(float * dest1, float * dest2);
+
     uint8_t _ascale, _gscale, _mscale, _mmode;
+
+    Data_module* _dataModule;
+
+    float _gyroBias[3] = {0, 0, 0}, _accelBias[3] = {0, 0, 0};
+    float _magCalibration[3] = {0, 0, 0}, _magbias[3] = {0, 0, 0};
+
+    uint16_t _pcal[8];         // calibration constants from MS5637 PROM registers
+    unsigned char _nCRC;       // calculated check sum to ensure PROM integrity
+    uint32_t _D1 = 0, _D2 = 0;  // raw MS5637 pressure and temperature data
+    double _dT, _OFFSET, _SENS, _T2, _OFFSET2, _SENS2;  // First order and second order corrections for raw S5637 temperature and pressure data
+    double _temperature, _pressure; // stores MS5637 pressures sensor pressure and temperature
+    float _altitudeOffset; // altitude offset calculated when MS5637 set up
+
 };
 
 #endif

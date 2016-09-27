@@ -8,20 +8,23 @@
   This sketch is written for use on a Teensy 3.1/3.2
   The circuit:
   * Components supplying input:
+    - Venus GPS logger
+      * TX  - pin 8
+      * RX  - pin 7
     - 9-Axis motion sensor MPU9250 Shield
       * Connected to the SMT pads on the underside of the Teensy
     - L3G4200D Gyro breakout
-      * SCL - pin 14
-      * SDA - pin 7
-      * SDO - pin 8
+      * SCL - pin 13
+      * SDA - pin 11
+      * SDO - pin 12
       * CS  - as defined in gyroChipSelect field
-      * INT1 - pin 2
-      * INT2 - pin 3
+      * INT1 - pin 1
+      * INT2 - NC
       * Other pins connected to independent power supplies
   * Components Outputted to:
     - ESP8266-01 WiFi Module
-      * TXD - pin 9
-      * RXD - pin 10
+      * TXD - pin 10
+      * RXD - pin 9
     - BOB-00544 microSD card SPI breakout
       * MOSI   - pin 11
       * MISO   - pin 12
@@ -32,8 +35,9 @@
       * SDO    - pin 12
       * CLK    - pin 13
       * CS     - as defined in radioChipSelect field
+      * NIRQ   - pin 0
     - Piezo buzzer
-      * +ve - pin 16
+      * +ve - pin 3
 
   Created 28 August 2016
   By Jamie Sanson
@@ -79,23 +83,15 @@ int8_t Ascale = AFS_16G;
 int8_t Gscale = GFS_250DPS;
 int8_t Mscale = MFS_16BITS;  // Choose either 14-bit or 16-bit magnetometer resolution
 int8_t Mmode = 0x02;         // 2 for 8Hz, 6 for 100Hz continuous
-uint16_t Pcal[8];         // calibration constants from MS5637 PROM registers
-unsigned char nCRC;       // calculated check sum to ensure PROM integrity
-uint32_t D1 = 0, D2 = 0;  // raw MS5637 pressure and temperature data
-double dT, OFFSET, SENS, T2, OFFSET2, SENS2;  // First order and second order corrections for raw S5637 temperature and pressure data
 
 int16_t accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
 int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
 int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output
 
-double Temperature, Pressure; // stores MS5637 pressures sensor pressure and temperature
-float altitudeOffset;
+
 
 float aRes, gRes, mRes;
 float ax,ay,az, gx, gy, gz, mx, my, mz;
-
-float gyroBias[3] = {0, 0, 0}, accelBias[3] = {0, 0, 0};
-float magCalibration[3] = {0, 0, 0}, magbias[3] = {0, 0, 0};
 
 int altitudeCount = 0;
 float altitudeBuffer = 0;
