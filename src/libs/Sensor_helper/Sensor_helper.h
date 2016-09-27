@@ -235,6 +235,9 @@ class Sensor_helper
     float _gyroBias[3] = {0, 0, 0}, _accelBias[3] = {0, 0, 0};
     float _magCalibration[3] = {0, 0, 0}, _magbias[3] = {0, 0, 0};
 
+    // Should be passed in, but for our uses will remain this value.
+    uint8_t OSR = ADC_8192;
+
     uint16_t _pcal[8];         // calibration constants from MS5637 PROM registers
     unsigned char _nCRC;       // calculated check sum to ensure PROM integrity
     uint32_t _D1 = 0, _D2 = 0;  // raw MS5637 pressure and temperature data

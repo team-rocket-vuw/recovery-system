@@ -88,24 +88,18 @@ int16_t accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
 int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
 int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output
 
-
-
-float aRes, gRes, mRes;
 float ax,ay,az, gx, gy, gz, mx, my, mz;
-
-int altitudeCount = 0;
-float altitudeBuffer = 0;
 // end region
 
 // region flags
-boolean serialDebugMode = false;
+boolean serialDebugMode = true;
 boolean initialiseOK = true;
 boolean altInit = false;
 // end region
 
 // region library instantiation
 Data_module dataModule(sdChipSelect, debugSerialBaud, initFileName, dataFileName);
-Sensor_helper helper(Ascale, Gscale, Mscale, Mmode);
+Sensor_helper helper(Ascale, Gscale, Mscale, Mmode, &dataModule);
 // end region
 
 void setup() {
@@ -115,10 +109,12 @@ void setup() {
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
 
+  while(!Serial.available());
   // Sensor setup
-  setupMPU9250();
-  setupAK8963();
-  setupMS5637();
+  // TODO: Check return of each to ensure success
+  helper.setupMPU9250();
+  helper.setupAK8963();
+  helper.setupMS5637();
 
   runInitLoop();
 }
@@ -144,130 +140,4 @@ void runInitLoop() {
 //                   Function definitions
 // ------------------------------------------------------------
 
-// REGION DATA COLLECTION FUNCTIONS
-float getAltitude(){
-  if (!altInit || altitudeCount == 256) {
-    D1 = helper.MS5637Read(ADC_D1, OSR);  // get raw pressure value
-    D2 = helper.MS5637Read(ADC_D2, OSR);  // get raw temperature value
-    dT = D2 - Pcal[5]*pow(2,8);    // calculate temperature difference from reference
-    OFFSET = Pcal[2]*pow(2, 17) + dT*Pcal[4]/pow(2,6);
-    SENS = Pcal[1]*pow(2,16) + dT*Pcal[3]/pow(2,7);
 
-    Temperature = (2000 + (dT*Pcal[6])/pow(2, 23))/100;   // First-order Temperature in degrees celsius
-
-    // Second order corrections
-    if(Temperature > 20)
-    {
-      T2 = 5*dT*dT/pow(2, 38); // correction for high temperatures
-      OFFSET2 = 0;
-      SENS2 = 0;
-    }
-    if(Temperature < 20)       // correction for low temperature
-    {
-      T2      = 3*dT*dT/pow(2, 33);
-      OFFSET2 = 61*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
-      SENS2   = 29*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
-    }
-    if(Temperature < -15)      // correction for very low temperature
-    {
-      OFFSET2 = OFFSET2 + 17*(100*Temperature + 1500)*(100*Temperature + 1500);
-      SENS2 = SENS2 + 9*(100*Temperature + 1500)*(100*Temperature + 1500);
-    }
-    // End of second order corrections
-
-    Temperature = Temperature - T2/100;
-    OFFSET = OFFSET - OFFSET2;
-    SENS = SENS - SENS2;
-
-    Pressure = (((D1*SENS)/pow(2, 21) - OFFSET)/pow(2, 15))/100;  // Pressure in mbar or kPa
-
-    altitudeBuffer = ((145366.45*(1.0 - pow((Pressure/1013.25), 0.190284)))/3.2808) - altitudeOffset; // Altitude calculation
-    altitudeCount = 0;
-  } else {
-    altitudeCount++;
-  }
-
-  return altitudeBuffer;
-}
-// END REGION
-
-// REGION SETUP FUNCTIONS
-void setupMPU9250() {
-  dataModule.print("Reading who-am-i byte of MPU9250\n");
-  byte c = helper.readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
-
-  dataModule.print("MPU9250 I AM "); dataModule.print(String(c, HEX)); dataModule.print(", I should be "); dataModule.print(String(0x71, HEX) + "\n");
-
-  if (c == 0x71) {
-    dataModule.print("MPU9250 online\n");
-    dataModule.print("Calibrating...\n\n");
-
-    helper.calibrateMPU9250(gyroBias, accelBias);
-
-    dataModule.print("Accelerometer bias: (mg)\n");
-    dataModule.print("X: " + (String)(1000*accelBias[0]) + " Y: " + (String)(1000*accelBias[1]) + " Z: " + (String)(1000*accelBias[2]) + "\n");
-
-    dataModule.print("Gyro bias: (o/s)\n");
-    dataModule.print("X: " + (String)gyroBias[0] + " Y: " + (String)gyroBias[1] + " Z: " + (String)gyroBias[2] + "\n");
-
-    helper.initMPU9250();
-    dataModule.print("\nMPU9250 initialized for active data mode....\n\n");
-  } else {
-    initialiseOK = false;
-    dataModule.print("MPU9250 failed to initialise\n");
-  }
-}
-
-void setupAK8963() {
-  dataModule.print("Reading who-am-i byte of magnetometer\n");
-  byte d = helper.readByte(AK8963_ADDRESS, WHO_AM_I_AK8963);  // Read WHO_AM_I register for AK8963
-  dataModule.print("AK8963 I AM "); dataModule.print(String(d, HEX)); dataModule.print(", I should be "); dataModule.print(String(0x48, HEX) + "\n");
-
-  if (!d == 0x48) {
-    initialiseOK = false;
-    dataModule.print("AK8963 failed to initialise\n");
-  }
-
-  helper.initAK8963(magCalibration);
-
-  dataModule.print("Calibrating...\n");
-  dataModule.print("X-Axis sensitivity adjustment value "); dataModule.print(String(magCalibration[0], 2) + "\n");
-  dataModule.print("Y-Axis sensitivity adjustment value "); dataModule.print(String(magCalibration[1], 2) + "\n");
-  dataModule.print("Z-Axis sensitivity adjustment value "); dataModule.print(String(magCalibration[2], 2) + "\n");
-  dataModule.print("\nAK8963 initialized for active data mode....\n");
-}
-
-void setupMS5637(){
-  helper.resetMS5637();
-  delay(100);
-  dataModule.print("MS5637 pressure sensor reset...\n");
-  // Read PROM data from MS5637 pressure sensor
-  helper.readPromMS5637(Pcal);
-  dataModule.print("PROM data read:\n");
-  dataModule.print("C0 = "); dataModule.print(String(Pcal[0]) + "\n");
-  unsigned char refCRC = Pcal[0] >> 12;
-  dataModule.print("C1 = "); dataModule.print(String(Pcal[1]) + "\n");
-  dataModule.print("C2 = "); dataModule.print(String(Pcal[2]) + "\n");
-  dataModule.print("C3 = "); dataModule.print(String(Pcal[3]) + "\n");
-  dataModule.print("C4 = "); dataModule.print(String(Pcal[4]) + "\n");
-  dataModule.print("C5 = "); dataModule.print(String(Pcal[5]) + "\n");
-  dataModule.print("C6 = "); dataModule.print(String(Pcal[6]) + "\n");
-
-  nCRC = helper.checkMS5637CRC(Pcal);  //calculate checksum to ensure integrity of MS5637 calibration data
-  dataModule.print("Checksum: " + String(nCRC) + ", should be: " + String(refCRC) + "\n");
-
-  if (nCRC != refCRC) {
-    initialiseOK = false;
-    dataModule.print("MS5637 checksum integrity failed\n");
-  }
-
-  // Calculate offset for relative altitude
-  float altitudeTemp = 0;
-  for(int i = 0; i < 16; i++) {
-    altitudeTemp += getAltitude();
-  }
-
-  altitudeOffset = altitudeTemp/16;
-  altInit = true;
-}
-// END REGION

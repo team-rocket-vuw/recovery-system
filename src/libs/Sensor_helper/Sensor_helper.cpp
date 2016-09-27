@@ -19,7 +19,7 @@ boolean Sensor_helper::setupMPU9250()
   _dataModule->println("Reading who-am-i byte of MPU9250");
   byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
 
-  _dataModule.println("MPU9250 I AM " + String(c, HEX) + ", I should be " + String(0x71, HEX));
+  _dataModule->println("MPU9250 I AM " + String(c, HEX) + ", I should be " + String(0x71, HEX));
 
   if (c == 0x71) {
     _dataModule->println("MPU9250 online");
@@ -28,10 +28,10 @@ boolean Sensor_helper::setupMPU9250()
     calibrateMPU9250(_gyroBias, _accelBias);
 
     _dataModule->println("Accelerometer bias: (mg)");
-    _dataModule->println("X: " + String(1000*accelBias[0]) + " Y: " + String(1000*accelBias[1]) + " Z: " + String(1000*accelBias[2]));
+    _dataModule->println("X: " + String(1000*_accelBias[0]) + " Y: " + String(1000*_accelBias[1]) + " Z: " + String(1000*_accelBias[2]));
 
     _dataModule->println("Gyro bias: (o/s)");
-    _dataModule->println("X: " + String(gyroBias[0]) + " Y: " + String(gyroBias[1]) + " Z: " + String(gyroBias[2]));
+    _dataModule->println("X: " + String(_gyroBias[0]) + " Y: " + String(_gyroBias[1]) + " Z: " + String(_gyroBias[2]));
 
     initMPU9250();
 
@@ -61,6 +61,8 @@ boolean Sensor_helper::setupAK8963()
     _dataModule->println("AK8963 failed to initialise");
     return false;
   }
+
+  return true;
 }
 
 boolean Sensor_helper::setupMS5637()
@@ -72,7 +74,7 @@ boolean Sensor_helper::setupMS5637()
   readPromMS5637(_pcal);
   _dataModule->println("PROM data read:");
   _dataModule->println("C0 = " + String(_pcal[0]));
-  unsigned char refCRC = Pcal[0] >> 12;
+  unsigned char refCRC = _pcal[0] >> 12;
   _dataModule->println("C1 = " + String(_pcal[1]));
   _dataModule->println("C2 = " + String(_pcal[2]));
   _dataModule->println("C3 = " + String(_pcal[3]));
@@ -373,7 +375,7 @@ float Sensor_helper::getAltitude()
   _pressure = (((_D1*_SENS)/pow(2, 21) - _OFFSET)/pow(2, 15))/100;  // Pressure in mbar or kPa
 
   // Altitude calculation from sensor charaterisation on datasheet
-  return ((145366.45*(1.0 - pow((_pressure/1013.25), 0.190284)))/3.2808) - altitudeOffset;
+  return ((145366.45*(1.0 - pow((_pressure/1013.25), 0.190284)))/3.2808) - _altitudeOffset;
 }
 
 // END REGION
@@ -496,13 +498,14 @@ uint32_t Sensor_helper::MS5637Read(uint8_t CMD, uint8_t OSR)
 
 // Full disclosure: This function was copy-pasted from https://github.com/kriswiner/MPU-9250/blob/master/MPU9250_MS5637_AHRS_t3.ino
 // It looks extremely convoluted, but it works so whatever
-//
-//          /     ^^^^^^^^^            ^^^^^^^^^    \
-//         /    ^     ^   ^          ^     ^   ^     \
-//        |             ^       |             ^       |
-//        |                     |D                    |
-//         \                                         /
-//          \        \____________________/         /    J$
+/*
+          /     ^^^^^^^^^            ^^^^^^^^^    \
+         /    ^     ^   ^          ^     ^   ^     \
+        |             ^       |             ^       |
+        |                     |D                    |
+         \                                         /
+          \        \____________________/         /    J$
+*/
 unsigned char Sensor_helper::checkMS5637CRC(uint16_t * n_prom)
 {
   int cnt;
