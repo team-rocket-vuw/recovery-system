@@ -42,18 +42,17 @@
   Created 28 August 2016
   By Jamie Sanson
 
-  Modified 27th September 2016
+  Modified 28th September 2016
   By Jamie Sanson
 
 */
 
 // region includes
 #include <i2c_t3.h>
+#include <SPI.h>
 
-#include <ESP8266.h>
 #include <Data_module.h>
 #include <Sensor_helper.h>
-#include <SPI.h>
 // end region
 
 // region pin definitions
@@ -81,18 +80,21 @@
 uint8_t OSR = ADC_8192;
 int8_t Ascale = AFS_16G;
 int8_t Gscale = GFS_250DPS;
-int8_t Mscale = MFS_16BITS;  // Choose either 14-bit or 16-bit magnetometer resolution
+int8_t Mscale = MFS_14BITS;  // Choose either 14-bit or 16-bit magnetometer resolution
+int8_t L3G4200DScale = L3G4200D_250DPS;
 int8_t Mmode = 0x02;         // 2 for 8Hz, 6 for 100Hz continuous
 
 float accelData[3] = {0,0,0}; // 3-axis accelerometer readings defines as x,y,z output in ms^-1
 float gyroData[3]  = {0,0,0}; // 3-axis gyro readings defines as x,y,z output in degrees per second
 float magData[3]   = {0,0,0}; // 3-axis magnetometer readings defines as x,y,z output in milliGauss
+
+int16_t L3G4200DData[3] = {0,0,0}; // 3-axis high-accuracy gyro readings
 // end region
 
 // region flags
 boolean serialDebugMode = true;
 boolean initialiseOK = true;
-boolean altInit = false;
+boolean L3G4200DReadReady = false;
 // end region
 
 // region library instantiation
@@ -106,27 +108,48 @@ void setup() {
 
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
+  // begin SPI for high-accuracy gyro
+  SPI.begin();
 
   // block until serial available. TODO: Replace with ESP block
-  while(!Serial.available());
-  
+  while(serialDebugMode && !Serial.available());
+
   // Sensor setup
-  // TODO: Check return of each to ensure success
-  helper.setupMPU9250();
-  helper.setupAK8963();
-  helper.setupMS5637();
-  delay(500);
+  setupIMU();
+  setupGyro();
 }
 
 void loop() {
   readIMU();
+  readGyro();
+  
   delay(200);
   dataModule.println(getIMULogString(accelData)+getIMULogString(gyroData)+getIMULogString(magData));
+  dataModule.println(getGyroLogString(L3G4200DData));
 }
 
 // ------------------------------------------------------------
 //                   Function definitions
 // ------------------------------------------------------------
+
+// Function to set up all sensors on IMU board
+void setupIMU() {
+  // TODO: Check return of each to ensure success
+  helper.setupMPU9250();
+  helper.setupAK8963();
+  helper.setupMS5637();
+}
+
+// Function to set up high-accuracy gyro and bind interrupt handler
+void setupGyro() {
+  helper.setupL3G4200D(L3G4200DScale, gyroChipSelect);
+  attachInterrupt(digitalPinToInterrupt(gyroIntPin), handleGyroInterrupt, FALLING);
+}
+
+// Gyro interrupt service routine
+void handleGyroInterrupt() {
+  L3G4200DReadReady = true;
+}
 
 // Function which reads each 3-axis sensor on the SMT IMU
 void readIMU() {
@@ -135,7 +158,20 @@ void readIMU() {
   helper.getIMUMagData(magData);
 }
 
+// Function for reading and updating information when ready
+void readGyro() {
+  if (L3G4200DReadReady) {
+    helper.getL3G4200DGyroData(L3G4200DData);
+    L3G4200DReadReady = false;
+  }
+}
+
 // Simple function for building a CSV formatted string from a 3 element array
 String getIMULogString(float * data) {
+  return (String(data[0], DEC) + "," + String(data[1], DEC) + "," + String(data[2], DEC) + ",");
+}
+
+// Similar function as above, with different type parameter
+String getGyroLogString(int16_t * data) {
   return (String(data[0], DEC) + "," + String(data[1], DEC) + "," + String(data[2], DEC) + ",");
 }

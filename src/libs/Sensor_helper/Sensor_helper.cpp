@@ -2,6 +2,7 @@
 #include "Sensor_helper.h"
 #include "Data_module.h"
 #include "i2c_t3.h"
+#include "SPI.h"
 
 Sensor_helper::Sensor_helper(uint8_t AScale, uint8_t GScale, uint8_t MScale, uint8_t Mmode, Data_module * dataModule){
   _gscale = GScale;
@@ -97,6 +98,41 @@ boolean Sensor_helper::setupMS5637()
   }
 
   _altitudeOffset = altitudeTemp/16;
+
+  return true;
+}
+
+boolean Sensor_helper::setupL3G4200D(int8_t l3gScale, int8_t chipSelect)
+{
+  _l3gScale = l3gScale;
+  _l3gChipSelect = chipSelect;
+  return initL3G4200D(_l3gScale);
+}
+
+boolean Sensor_helper::initL3G4200D(int8_t scale)
+{
+  // The WHO_AM_I register should read 0xD3
+  if(readSPIRegister(L3G4200D_WHO_AM_I, _l3gChipSelect)!=0xD3) {
+    return false;
+  }
+
+  // Enable x, y, z and turn off power down:
+  writeSPIRegister(L3G4200D_CTRL_REG1, 0b00001111, _l3gChipSelect);
+
+  // If you'd like to adjust/use the HPF, you can edit the line below to configure CTRL_REG2:
+  writeSPIRegister(L3G4200D_CTRL_REG2, 0b00000000, _l3gChipSelect);
+
+  // Configure CTRL_REG3 to generate data ready interrupt on INT2
+  // No interrupts used on INT1, if you'd like to configure INT1
+  // or INT2 otherwise, consult the datasheet:
+  writeSPIRegister(L3G4200D_CTRL_REG3, 0b00001000, _l3gChipSelect);
+
+  // CTRL_REG4 controls the full-scale range, among other things:
+  scale &= 0x03;
+  writeSPIRegister(L3G4200D_CTRL_REG4, scale<<4, _l3gChipSelect);
+
+  // CTRL_REG5 controls high-pass filtering of outputs, use it
+  writeSPIRegister(L3G4200D_CTRL_REG5, 0b00000000, _l3gChipSelect);
 
   return true;
 }
@@ -415,7 +451,49 @@ void Sensor_helper::getIMUMagData(float * data)
   }
 }
 
+void Sensor_helper::getL3G4200DGyroData(int16_t * destination)
+{
+  // To read, we request high byte, then bit-shift and mask with low byte
+  // providing a 16 bit integer read out
+
+  // reading gyro x-axis measurements
+  destination[0] = (readSPIRegister(L3G4200D_OUT_X_H, _l3gChipSelect)&0xFF)<<8;
+  destination[0] |= (readSPIRegister(L3G4200D_OUT_X_L, _l3gChipSelect)&0xFF);
+
+  // reading gyro y-axis measurements
+  destination[1] = (readSPIRegister(L3G4200D_OUT_Y_H, _l3gChipSelect)&0xFF)<<8;
+  destination[1] |= (readSPIRegister(L3G4200D_OUT_Y_L, _l3gChipSelect)&0xFF);
+
+  // reading gyro z-axis measurements
+  destination[2] = (readSPIRegister(L3G4200D_OUT_Z_H, _l3gChipSelect)&0xFF)<<8;
+  destination[2] |= (readSPIRegister(L3G4200D_OUT_Z_L, _l3gChipSelect)&0xFF);
+}
+
 // END REGION
+
+int8_t Sensor_helper::readSPIRegister(byte address, int8_t chipSelect)
+{
+  int8_t toRead;
+
+  address |= 0x80; // bitmask read command
+
+  digitalWrite(chipSelect, LOW); // pull chip select LOW for transfer
+  SPI.transfer(address);         // Push register address
+  toRead = SPI.transfer(0x00);   // Send read request flag
+  digitalWrite(chipSelect, HIGH);// pull chip select LOW for transfer
+
+  return toRead;
+}
+
+void Sensor_helper::writeSPIRegister(byte address, byte payload, int8_t chipSelect)
+{
+  address &= 0x7F; // bitmask write command
+
+  digitalWrite(chipSelect, LOW); // pull chip select LOW for transfer
+  SPI.transfer(address);         // Push register address
+  SPI.transfer(payload);         // Push payload
+  digitalWrite(chipSelect, HIGH);// pull chip select LOW for transfer
+}
 
 void Sensor_helper::writeByte(uint8_t address, uint8_t subAddress, uint8_t data)
 {
