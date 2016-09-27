@@ -38,7 +38,7 @@
   Created 28 August 2016
   By Jamie Sanson
 
-  Modified 28 August 2016
+  Modified 27th September 2016
   By Jamie Sanson
 
 */
@@ -108,7 +108,6 @@ boolean altInit = false;
 // end region
 
 // region library instantiation
-//ESP8266 wifi(espSerial);
 Data_module dataModule(sdChipSelect, debugSerialBaud, initFileName, dataFileName);
 Sensor_helper helper(Ascale, Gscale, Mscale, Mmode);
 // end region

@@ -362,13 +362,13 @@ uint32_t Sensor_helper::MS5637Read(uint8_t CMD, uint8_t OSR)
 
 // Full disclosure: This function was copy-pasted from https://github.com/kriswiner/MPU-9250/blob/master/MPU9250_MS5637_AHRS_t3.ino
 // It looks extremely convoluted, but it works so whatever
-//        ,~~.
-//       (  9 )-_,
-//  (\___ )=='-'
-//   \ .   ) )
-//    \ `-' /
-//     `~j-'   hjw
-//       "=:
+//
+//          /     ^^^^^^^^^            ^^^^^^^^^    \
+//         /    ^     ^   ^          ^     ^   ^     \
+//        |             ^       |             ^       |
+//        |                     |D                    |
+//         \                                         /
+//          \        \____________________/         /    J$
 unsigned char Sensor_helper::checkMS5637CRC(uint16_t * n_prom)
 {
   int cnt;
