@@ -47,6 +47,13 @@ void Data_module::setDebugMode(boolean isDebugMode)
 void Data_module::initComplete()
 {
   _isInitState = false;
+
+  if (!_serialDebug) {
+    // flush buffer when init complete
+    File _datafile = SD.open(_fileNameBuffer, O_CREAT | O_WRITE);
+    _datafile.print(_dataBuffer);
+    _datafile.close();
+  }
 }
 
 String Data_module::getIncrementedFileName(String name, String extension)

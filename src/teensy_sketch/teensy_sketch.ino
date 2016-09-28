@@ -108,15 +108,16 @@ void setup() {
 
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
+  
   // begin SPI for high-accuracy gyro
   SPI.begin();
 
-  // block until serial available. TODO: Replace with ESP block
-  while(serialDebugMode && !Serial.available());
-
   // Sensor setup
+  delay(500);
   setupIMU();
   setupGyro();
+
+  dataModule.initComplete();
 }
 
 void loop() {
