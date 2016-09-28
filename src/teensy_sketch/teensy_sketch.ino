@@ -8,20 +8,23 @@
   This sketch is written for use on a Teensy 3.1/3.2
   The circuit:
   * Components supplying input:
+    - Venus GPS logger
+      * TX  - pin 8
+      * RX  - pin 7
     - 9-Axis motion sensor MPU9250 Shield
       * Connected to the SMT pads on the underside of the Teensy
     - L3G4200D Gyro breakout
-      * SCL - pin 14
-      * SDA - pin 7
-      * SDO - pin 8
+      * SCL - pin 13
+      * SDA - pin 11
+      * SDO - pin 12
       * CS  - as defined in gyroChipSelect field
-      * INT1 - pin 2
-      * INT2 - pin 3
+      * INT1 - pin 1
+      * INT2 - NC
       * Other pins connected to independent power supplies
   * Components Outputted to:
     - ESP8266-01 WiFi Module
-      * TXD - pin 9
-      * RXD - pin 10
+      * TXD - pin 10
+      * RXD - pin 9
     - BOB-00544 microSD card SPI breakout
       * MOSI   - pin 11
       * MISO   - pin 12
@@ -32,24 +35,24 @@
       * SDO    - pin 12
       * CLK    - pin 13
       * CS     - as defined in radioChipSelect field
+      * NIRQ   - pin 0
     - Piezo buzzer
-      * +ve - pin 16
+      * +ve - pin 3
 
   Created 28 August 2016
   By Jamie Sanson
 
-  Modified 27th September 2016
+  Modified 28th September 2016
   By Jamie Sanson
 
 */
 
 // region includes
 #include <i2c_t3.h>
+#include <SPI.h>
 
-#include <ESP8266.h>
 #include <Data_module.h>
 #include <Sensor_helper.h>
-#include <SPI.h>
 // end region
 
 // region pin definitions
@@ -77,201 +80,99 @@
 uint8_t OSR = ADC_8192;
 int8_t Ascale = AFS_16G;
 int8_t Gscale = GFS_250DPS;
-int8_t Mscale = MFS_16BITS;  // Choose either 14-bit or 16-bit magnetometer resolution
+int8_t Mscale = MFS_14BITS;  // Choose either 14-bit or 16-bit magnetometer resolution
+int8_t L3G4200DScale = L3G4200D_250DPS;
 int8_t Mmode = 0x02;         // 2 for 8Hz, 6 for 100Hz continuous
-uint16_t Pcal[8];         // calibration constants from MS5637 PROM registers
-unsigned char nCRC;       // calculated check sum to ensure PROM integrity
-uint32_t D1 = 0, D2 = 0;  // raw MS5637 pressure and temperature data
-double dT, OFFSET, SENS, T2, OFFSET2, SENS2;  // First order and second order corrections for raw S5637 temperature and pressure data
 
-int16_t accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
-int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
-int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output
+float accelData[3] = {0,0,0}; // 3-axis accelerometer readings defines as x,y,z output in ms^-1
+float gyroData[3]  = {0,0,0}; // 3-axis gyro readings defines as x,y,z output in degrees per second
+float magData[3]   = {0,0,0}; // 3-axis magnetometer readings defines as x,y,z output in milliGauss
 
-double Temperature, Pressure; // stores MS5637 pressures sensor pressure and temperature
-float altitudeOffset;
-
-float aRes, gRes, mRes;
-float ax,ay,az, gx, gy, gz, mx, my, mz;
-
-float gyroBias[3] = {0, 0, 0}, accelBias[3] = {0, 0, 0};
-float magCalibration[3] = {0, 0, 0}, magbias[3] = {0, 0, 0};
-
-int altitudeCount = 0;
-float altitudeBuffer = 0;
+int16_t L3G4200DData[3] = {0,0,0}; // 3-axis high-accuracy gyro readings
 // end region
 
 // region flags
-boolean serialDebugMode = false;
+boolean serialDebugMode = true;
 boolean initialiseOK = true;
-boolean altInit = false;
+boolean L3G4200DReadReady = false;
 // end region
 
 // region library instantiation
 Data_module dataModule(sdChipSelect, debugSerialBaud, initFileName, dataFileName);
-Sensor_helper helper(Ascale, Gscale, Mscale, Mmode);
+Sensor_helper helper(Ascale, Gscale, Mscale, Mmode, &dataModule); // Data_module required for sensor debug
 // end region
 
 void setup() {
   dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
-  dataModule.initialize(); // setup data module
+  dataModule.initialize();                  // setup data module
 
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
+  
+  // begin SPI for high-accuracy gyro
+  SPI.begin();
 
   // Sensor setup
-  setupMPU9250();
-  setupAK8963();
-  setupMS5637();
+  delay(500);
+  setupIMU();
+  setupGyro();
 
-  runInitLoop();
+  dataModule.initComplete();
 }
 
 void loop() {
-  runMainLoop();
-}
-
-// ------------------------------------------------------------
-//                      Loop declarations
-// ------------------------------------------------------------
-
-void runMainLoop() {
-  // TODO: Read sensors, detect apogee, send radio, activate buzzer
-}
-
-void runInitLoop() {
-  // TODO: ESP handshaking and blocking to wait on commands
-  while (1);
+  readIMU();
+  readGyro();
+  
+  delay(200);
+  dataModule.println(getIMULogString(accelData)+getIMULogString(gyroData)+getIMULogString(magData));
+  dataModule.println(getGyroLogString(L3G4200DData));
 }
 
 // ------------------------------------------------------------
 //                   Function definitions
 // ------------------------------------------------------------
 
-// REGION DATA COLLECTION FUNCTIONS
-float getAltitude(){
-  if (!altInit || altitudeCount == 256) {
-    D1 = helper.MS5637Read(ADC_D1, OSR);  // get raw pressure value
-    D2 = helper.MS5637Read(ADC_D2, OSR);  // get raw temperature value
-    dT = D2 - Pcal[5]*pow(2,8);    // calculate temperature difference from reference
-    OFFSET = Pcal[2]*pow(2, 17) + dT*Pcal[4]/pow(2,6);
-    SENS = Pcal[1]*pow(2,16) + dT*Pcal[3]/pow(2,7);
-
-    Temperature = (2000 + (dT*Pcal[6])/pow(2, 23))/100;   // First-order Temperature in degrees celsius
-
-    // Second order corrections
-    if(Temperature > 20)
-    {
-      T2 = 5*dT*dT/pow(2, 38); // correction for high temperatures
-      OFFSET2 = 0;
-      SENS2 = 0;
-    }
-    if(Temperature < 20)       // correction for low temperature
-    {
-      T2      = 3*dT*dT/pow(2, 33);
-      OFFSET2 = 61*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
-      SENS2   = 29*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
-    }
-    if(Temperature < -15)      // correction for very low temperature
-    {
-      OFFSET2 = OFFSET2 + 17*(100*Temperature + 1500)*(100*Temperature + 1500);
-      SENS2 = SENS2 + 9*(100*Temperature + 1500)*(100*Temperature + 1500);
-    }
-    // End of second order corrections
-
-    Temperature = Temperature - T2/100;
-    OFFSET = OFFSET - OFFSET2;
-    SENS = SENS - SENS2;
-
-    Pressure = (((D1*SENS)/pow(2, 21) - OFFSET)/pow(2, 15))/100;  // Pressure in mbar or kPa
-
-    altitudeBuffer = ((145366.45*(1.0 - pow((Pressure/1013.25), 0.190284)))/3.2808) - altitudeOffset; // Altitude calculation
-    altitudeCount = 0;
-  } else {
-    altitudeCount++;
-  }
-
-  return altitudeBuffer;
+// Function to set up all sensors on IMU board
+void setupIMU() {
+  // TODO: Check return of each to ensure success
+  helper.setupMPU9250();
+  helper.setupAK8963();
+  helper.setupMS5637();
 }
-// END REGION
 
-// REGION SETUP FUNCTIONS
-void setupMPU9250() {
-  dataModule.print("Reading who-am-i byte of MPU9250\n");
-  byte c = helper.readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
+// Function to set up high-accuracy gyro and bind interrupt handler
+void setupGyro() {
+  helper.setupL3G4200D(L3G4200DScale, gyroChipSelect);
+  attachInterrupt(digitalPinToInterrupt(gyroIntPin), handleGyroInterrupt, FALLING);
+}
 
-  dataModule.print("MPU9250 I AM "); dataModule.print(String(c, HEX)); dataModule.print(", I should be "); dataModule.print(String(0x71, HEX) + "\n");
+// Gyro interrupt service routine
+void handleGyroInterrupt() {
+  L3G4200DReadReady = true;
+}
 
-  if (c == 0x71) {
-    dataModule.print("MPU9250 online\n");
-    dataModule.print("Calibrating...\n\n");
+// Function which reads each 3-axis sensor on the SMT IMU
+void readIMU() {
+  helper.getIMUAccelData(accelData);
+  helper.getIMUGyroData(gyroData);
+  helper.getIMUMagData(magData);
+}
 
-    helper.calibrateMPU9250(gyroBias, accelBias);
-
-    dataModule.print("Accelerometer bias: (mg)\n");
-    dataModule.print("X: " + (String)(1000*accelBias[0]) + " Y: " + (String)(1000*accelBias[1]) + " Z: " + (String)(1000*accelBias[2]) + "\n");
-
-    dataModule.print("Gyro bias: (o/s)\n");
-    dataModule.print("X: " + (String)gyroBias[0] + " Y: " + (String)gyroBias[1] + " Z: " + (String)gyroBias[2] + "\n");
-
-    helper.initMPU9250();
-    dataModule.print("\nMPU9250 initialized for active data mode....\n\n");
-  } else {
-    initialiseOK = false;
-    dataModule.print("MPU9250 failed to initialise\n");
+// Function for reading and updating information when ready
+void readGyro() {
+  if (L3G4200DReadReady) {
+    helper.getL3G4200DGyroData(L3G4200DData);
+    L3G4200DReadReady = false;
   }
 }
 
-void setupAK8963() {
-  dataModule.print("Reading who-am-i byte of magnetometer\n");
-  byte d = helper.readByte(AK8963_ADDRESS, WHO_AM_I_AK8963);  // Read WHO_AM_I register for AK8963
-  dataModule.print("AK8963 I AM "); dataModule.print(String(d, HEX)); dataModule.print(", I should be "); dataModule.print(String(0x48, HEX) + "\n");
-
-  if (!d == 0x48) {
-    initialiseOK = false;
-    dataModule.print("AK8963 failed to initialise\n");
-  }
-
-  helper.initAK8963(magCalibration);
-
-  dataModule.print("Calibrating...\n");
-  dataModule.print("X-Axis sensitivity adjustment value "); dataModule.print(String(magCalibration[0], 2) + "\n");
-  dataModule.print("Y-Axis sensitivity adjustment value "); dataModule.print(String(magCalibration[1], 2) + "\n");
-  dataModule.print("Z-Axis sensitivity adjustment value "); dataModule.print(String(magCalibration[2], 2) + "\n");
-  dataModule.print("\nAK8963 initialized for active data mode....\n");
+// Simple function for building a CSV formatted string from a 3 element array
+String getIMULogString(float * data) {
+  return (String(data[0], DEC) + "," + String(data[1], DEC) + "," + String(data[2], DEC) + ",");
 }
 
-void setupMS5637(){
-  helper.resetMS5637();
-  delay(100);
-  dataModule.print("MS5637 pressure sensor reset...\n");
-  // Read PROM data from MS5637 pressure sensor
-  helper.readPromMS5637(Pcal);
-  dataModule.print("PROM data read:\n");
-  dataModule.print("C0 = "); dataModule.print(String(Pcal[0]) + "\n");
-  unsigned char refCRC = Pcal[0] >> 12;
-  dataModule.print("C1 = "); dataModule.print(String(Pcal[1]) + "\n");
-  dataModule.print("C2 = "); dataModule.print(String(Pcal[2]) + "\n");
-  dataModule.print("C3 = "); dataModule.print(String(Pcal[3]) + "\n");
-  dataModule.print("C4 = "); dataModule.print(String(Pcal[4]) + "\n");
-  dataModule.print("C5 = "); dataModule.print(String(Pcal[5]) + "\n");
-  dataModule.print("C6 = "); dataModule.print(String(Pcal[6]) + "\n");
-
-  nCRC = helper.checkMS5637CRC(Pcal);  //calculate checksum to ensure integrity of MS5637 calibration data
-  dataModule.print("Checksum: " + String(nCRC) + ", should be: " + String(refCRC) + "\n");
-
-  if (nCRC != refCRC) {
-    initialiseOK = false;
-    dataModule.print("MS5637 checksum integrity failed\n");
-  }
-
-  // Calculate offset for relative altitude
-  float altitudeTemp = 0;
-  for(int i = 0; i < 16; i++) {
-    altitudeTemp += getAltitude();
-  }
-
-  altitudeOffset = altitudeTemp/16;
-  altInit = true;
+// Similar function as above, with different type parameter
+String getGyroLogString(int16_t * data) {
+  return (String(data[0], DEC) + "," + String(data[1], DEC) + "," + String(data[2], DEC) + ",");
 }
-// END REGION

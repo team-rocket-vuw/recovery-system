@@ -33,9 +33,9 @@ boolean Data_module::initialize()
     println("Initialising card");
     _initFileName = getIncrementedFileName(_initFileName, "txt");
     _dataFileName = getIncrementedFileName(_dataFileName, "csv");
-    return true;
   }
 
+  return true;
 }
 
 // NOTE: Must be called before initialize()
@@ -47,6 +47,13 @@ void Data_module::setDebugMode(boolean isDebugMode)
 void Data_module::initComplete()
 {
   _isInitState = false;
+
+  if (!_serialDebug) {
+    // flush buffer when init complete
+    File _datafile = SD.open(_fileNameBuffer, O_CREAT | O_WRITE);
+    _datafile.print(_dataBuffer);
+    _datafile.close();
+  }
 }
 
 String Data_module::getIncrementedFileName(String name, String extension)

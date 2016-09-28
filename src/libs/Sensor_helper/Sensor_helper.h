@@ -6,6 +6,7 @@
 #define Sensor_helper_h
 
 #include "Arduino.h"
+#include "Data_module.h"
 
 // Register definitions
 
@@ -155,6 +156,38 @@
 #define ZA_OFFSET_H      0x7D
 #define ZA_OFFSET_L      0x7E
 
+// L3G4200D register definitions
+#define L3G4200D_WHO_AM_I      0x0F
+
+#define L3G4200D_CTRL_REG1     0x20
+#define L3G4200D_CTRL_REG2     0x21
+#define L3G4200D_CTRL_REG3     0x22
+#define L3G4200D_CTRL_REG4     0x23
+#define L3G4200D_CTRL_REG5     0x24
+#define L3G4200D_REFERENCE     0x25
+#define L3G4200D_OUT_TEMP      0x26
+#define L3G4200D_STATUS_REG    0x27
+
+#define L3G4200D_OUT_X_L       0x28
+#define L3G4200D_OUT_X_H       0x29
+#define L3G4200D_OUT_Y_L       0x2A
+#define L3G4200D_OUT_Y_H       0x2B
+#define L3G4200D_OUT_Z_L       0x2C
+#define L3G4200D_OUT_Z_H       0x2D
+
+#define L3G4200D_FIFO_CTRL_REG 0x2E
+#define L3G4200D_FIFO_SRC_REG  0x2F
+
+#define L3G4200D_INT1_CFG      0x30
+#define L3G4200D_INT1_SRC      0x31
+#define L3G4200D_INT1_THS_XH   0x32
+#define L3G4200D_INT1_THS_XL   0x33
+#define L3G4200D_INT1_THS_YH   0x34
+#define L3G4200D_INT1_THS_YL   0x35
+#define L3G4200D_INT1_THS_ZH   0x36
+#define L3G4200D_INT1_THS_ZL   0x37
+#define L3G4200D_INT1_DURATION 0x38
+
 // Using the MSENSR-9250 breakout board, ADO is set to 0
 // Seven-bit device address is 110100 for ADO = 0 and 110101 for ADO = 1
 #if ADO
@@ -188,21 +221,41 @@
 #define MFS_14BITS       0
 #define MFS_16BITS       1
 
+// Gyro scale definitions
+#define L3G4200D_250DPS   0
+#define L3G4200D_500DPS   1
+#define L3G4200D_2000DPS  2
+
+
 // Library function prototypes
 
 class Sensor_helper
 {
   public:
-    Sensor_helper(uint8_t AScale, uint8_t GScale, uint8_t MScale, uint8_t Mmode);
+    Sensor_helper(uint8_t AScale, uint8_t GScale, uint8_t MScale, uint8_t Mmode, Data_module * dataModule);
+    boolean setupMPU9250();
+    boolean setupMS5637();
+    boolean setupAK8963();
+    boolean setupL3G4200D(int8_t L3GyroScale, int8_t chipSelect);
+
+    // sensor value returing functions
+    float getAltitude();
+
+    void getIMUAccelData(float * dest);// get IMU x-y-z accelerometer readings
+    void getIMUGyroData(float * dest); // get IMU x-y-z gyroscope readings
+    void getIMUMagData(float * dest);  // get IMU x-y-z magnetometer readings
+    void getL3G4200DGyroData(int16_t * dest);    // get 3-axis measurements from L3G4200D sensor
+
+  private:
     // init and basic helpers
     void initMPU9250();
+    boolean initL3G4200D(int8_t scale);
     void initAK8963(float * destination);
     void calibrateMPU9250(float * dest1, float * dest2);
-
-    // utility functions
-    void writeByte(uint8_t address, uint8_t subAddress, uint8_t data);
-    void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * dest);
-    uint8_t readByte(uint8_t address, uint8_t subAddress);
+    void resetMS5637();
+    void readPromMS5637(uint16_t * destination);
+    uint32_t MS5637Read(uint8_t CMD, uint8_t OSR);
+    unsigned char checkMS5637CRC(uint16_t * n_prom);
 
     // data specific functions
     void readAccelData(int16_t * destination);
@@ -214,13 +267,38 @@ class Sensor_helper
     void readMagData(int16_t * destination);
     float getMagRes();
 
-    void resetMS5637();
-    void readPromMS5637(uint16_t * destination);
-    uint32_t MS5637Read(uint8_t CMD, uint8_t OSR);
-    unsigned char checkMS5637CRC(uint16_t * n_prom);
+    // utility functions
+    void writeByte(uint8_t address, uint8_t subAddress, uint8_t data);
+    void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * dest);
+    uint8_t readByte(uint8_t address, uint8_t subAddress);
 
-  private:
+    void writeSPIRegister(byte address, byte payload, int8_t chipSelect);
+    int8_t readSPIRegister(byte address, int8_t chipSelect);
+
     uint8_t _ascale, _gscale, _mscale, _mmode;
+    int8_t _l3gScale, _l3gChipSelect;
+
+    Data_module* _dataModule;
+
+    float _gyroBias[3] = {0, 0, 0}, _accelBias[3] = {0, 0, 0};
+    float _magCalibration[3] = {0, 0, 0}, _magbias[3] = {0, 0, 0};
+
+    // Should be passed in, but for our uses will remain this value.
+    uint8_t OSR = ADC_8192;
+
+    uint16_t _pcal[8];         // calibration constants from MS5637 PROM registers
+    unsigned char _nCRC;       // calculated check sum to ensure PROM integrity
+    uint32_t _D1 = 0, _D2 = 0;  // raw MS5637 pressure and temperature data
+    double _dT, _OFFSET, _SENS, _T2, _OFFSET2, _SENS2;  // First order and second order corrections for raw S5637 temperature and pressure data
+    double _temperature, _pressure; // stores MS5637 pressures sensor pressure and temperature
+    float _altitudeOffset; // altitude offset calculated when MS5637 set up
+
+    int16_t _accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
+    int16_t _gyroCount[3];   // Stores the 16-bit signed gyro sensor output
+    int16_t _magCount[3];    // Stores the 16-bit signed magnetometer sensor output
+
+    float _aRes, _gRes, _mRes;
+
 };
 
 #endif

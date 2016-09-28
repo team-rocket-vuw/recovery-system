@@ -1,12 +1,140 @@
 #include "Arduino.h"
 #include "Sensor_helper.h"
+#include "Data_module.h"
 #include "i2c_t3.h"
+#include "SPI.h"
 
-Sensor_helper::Sensor_helper(uint8_t AScale, uint8_t GScale, uint8_t MScale, uint8_t Mmode){
+Sensor_helper::Sensor_helper(uint8_t AScale, uint8_t GScale, uint8_t MScale, uint8_t Mmode, Data_module * dataModule){
   _gscale = GScale;
   _ascale = AScale;
   _mscale = MScale;
   _mmode = Mmode;
+
+  _dataModule = dataModule;
+}
+
+// REGION SETUP FUNCTIONS
+
+boolean Sensor_helper::setupMPU9250()
+{
+  _dataModule->println("Reading who-am-i byte of MPU9250");
+  byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
+
+  _dataModule->println("MPU9250 I AM " + String(c, HEX) + ", I should be " + String(0x71, HEX));
+
+  if (c == 0x71) {
+    _dataModule->println("MPU9250 online");
+    _dataModule->println("Calibrating...\n\n");
+
+    calibrateMPU9250(_gyroBias, _accelBias);
+
+    _dataModule->println("Accelerometer bias: (mg)");
+    _dataModule->println("X: " + String(1000*_accelBias[0]) + " Y: " + String(1000*_accelBias[1]) + " Z: " + String(1000*_accelBias[2]));
+
+    _dataModule->println("Gyro bias: (o/s)");
+    _dataModule->println("X: " + String(_gyroBias[0]) + " Y: " + String(_gyroBias[1]) + " Z: " + String(_gyroBias[2]));
+
+    initMPU9250();
+
+    _dataModule->println("\nMPU9250 initialized for active data mode....");
+    return true;
+  } else {
+    _dataModule->println("MPU9250 failed to initialise");
+    return false;
+  }
+}
+
+boolean Sensor_helper::setupAK8963()
+{
+  _dataModule->println("Reading who-am-i byte of magnetometer");
+  byte d = readByte(AK8963_ADDRESS, WHO_AM_I_AK8963);  // Read WHO_AM_I register for AK8963
+  _dataModule->println("AK8963 I AM " + String(d, HEX) + ", I should be " + String(0x48, HEX));
+
+  if (d == 0x48) {
+    initAK8963(_magCalibration);
+
+    _dataModule->println("Calibrating...");
+    _dataModule->println("X-Axis sensitivity adjustment value " + String(_magCalibration[0], 2));
+    _dataModule->println("Y-Axis sensitivity adjustment value " + String(_magCalibration[1], 2));
+    _dataModule->println("Z-Axis sensitivity adjustment value " + String(_magCalibration[2], 2));
+    _dataModule->println("\nAK8963 initialized for active data mode....");
+  } else {
+    _dataModule->println("AK8963 failed to initialise");
+    return false;
+  }
+
+  return true;
+}
+
+boolean Sensor_helper::setupMS5637()
+{
+  resetMS5637();
+  delay(100);
+  _dataModule->println("MS5637 pressure sensor reset...");
+  // Read PROM data from MS5637 pressure sensor
+  readPromMS5637(_pcal);
+  _dataModule->println("PROM data read:");
+  _dataModule->println("C0 = " + String(_pcal[0]));
+  unsigned char refCRC = _pcal[0] >> 12;
+  _dataModule->println("C1 = " + String(_pcal[1]));
+  _dataModule->println("C2 = " + String(_pcal[2]));
+  _dataModule->println("C3 = " + String(_pcal[3]));
+  _dataModule->println("C4 = " + String(_pcal[4]));
+  _dataModule->println("C5 = " + String(_pcal[5]));
+  _dataModule->println("C6 = " + String(_pcal[6]));
+
+  _nCRC = checkMS5637CRC(_pcal);  //calculate checksum to ensure integrity of MS5637 calibration data
+  _dataModule->println("Checksum: " + String(_nCRC) + ", should be: " + String(refCRC));
+
+  if (_nCRC != refCRC) {
+    _dataModule->println("MS5637 checksum integrity check failed");
+    return false;
+  }
+
+  // Calculate offset for relative altitude
+  float altitudeTemp = 0;
+  for(int i = 0; i < 16; i++) {
+    altitudeTemp += getAltitude();
+  }
+
+  _altitudeOffset = altitudeTemp/16;
+
+  return true;
+}
+
+boolean Sensor_helper::setupL3G4200D(int8_t l3gScale, int8_t chipSelect)
+{
+  _l3gScale = l3gScale;
+  _l3gChipSelect = chipSelect;
+  return initL3G4200D(_l3gScale);
+}
+
+boolean Sensor_helper::initL3G4200D(int8_t scale)
+{
+  // The WHO_AM_I register should read 0xD3
+  if(readSPIRegister(L3G4200D_WHO_AM_I, _l3gChipSelect)!=0xD3) {
+    return false;
+  }
+
+  // Enable x, y, z and turn off power down:
+  writeSPIRegister(L3G4200D_CTRL_REG1, 0b00001111, _l3gChipSelect);
+
+  // If you'd like to adjust/use the HPF, you can edit the line below to configure CTRL_REG2:
+  writeSPIRegister(L3G4200D_CTRL_REG2, 0b00000000, _l3gChipSelect);
+
+  // Configure CTRL_REG3 to generate data ready interrupt on INT2
+  // No interrupts used on INT1, if you'd like to configure INT1
+  // or INT2 otherwise, consult the datasheet:
+  writeSPIRegister(L3G4200D_CTRL_REG3, 0b00001000, _l3gChipSelect);
+
+  // CTRL_REG4 controls the full-scale range, among other things:
+  scale &= 0x03;
+  writeSPIRegister(L3G4200D_CTRL_REG4, scale<<4, _l3gChipSelect);
+
+  // CTRL_REG5 controls high-pass filtering of outputs, use it
+  writeSPIRegister(L3G4200D_CTRL_REG5, 0b00000000, _l3gChipSelect);
+
+  return true;
 }
 
 void Sensor_helper::initAK8963(float * destination)
@@ -244,6 +372,129 @@ void Sensor_helper::calibrateMPU9250(float * dest1, float * dest2)
 
 }
 
+// END REGION
+
+// REGION SENSOR VALUE RETRIEVING FUNCTIONS
+
+float Sensor_helper::getAltitude()
+{
+  _D1 = MS5637Read(ADC_D1, OSR);  // get raw pressure value
+  _D2 = MS5637Read(ADC_D2, OSR);  // get raw temperature value
+  _dT = _D2 - _pcal[5]*pow(2,8);    // calculate temperature difference from reference
+  _OFFSET = _pcal[2]*pow(2, 17) + _dT*_pcal[4]/pow(2,6);
+  _SENS = _pcal[1]*pow(2,16) + _dT*_pcal[3]/pow(2,7);
+
+  _temperature = (2000 + (_dT*_pcal[6])/pow(2, 23))/100;   // First-order Temperature in degrees celsius
+
+  // Second order corrections
+  if(_temperature > 20)
+  {
+    _T2      = 5*_dT*_dT/pow(2, 38); // correction for high temperatures
+    _OFFSET2 = 0;
+    _SENS2   = 0;
+  } else if(_temperature < 20)       // correction for low temperature
+  {
+    _T2      = 3*_dT*_dT/pow(2, 33);
+    _OFFSET2 = 61*(100*_temperature - 2000)*(100*_temperature - 2000)/16;
+    _SENS2   = 29*(100*_temperature - 2000)*(100*_temperature - 2000)/16;
+  } else if(_temperature < -15)      // correction for very low temperature
+  {
+    _OFFSET2 = _OFFSET2 + 17*(100*_temperature + 1500)*(100*_temperature + 1500);
+    _SENS2 = _SENS2 + 9*(100*_temperature + 1500)*(100*_temperature + 1500);
+  }
+  // End of second order corrections
+
+  _temperature = _temperature - _T2/100;
+  _OFFSET = _OFFSET - _OFFSET2;
+  _SENS = _SENS - _SENS2;
+
+  _pressure = (((_D1*_SENS)/pow(2, 21) - _OFFSET)/pow(2, 15))/100;  // Pressure in mbar or kPa
+
+  // Altitude calculation from sensor charaterisation on datasheet
+  return ((145366.45*(1.0 - pow((_pressure/1013.25), 0.190284)))/3.2808) - _altitudeOffset;
+}
+
+void Sensor_helper::getIMUAccelData(float * data)
+{
+  readAccelData(_accelCount);
+  _aRes = getAccelRes();
+
+  // Three axis accelerometer reading calculation
+  for (int i = 0; i < 3; i++)
+  {
+    data[i] = (float)_accelCount[i]*_aRes;
+  }
+}
+
+void Sensor_helper::getIMUGyroData(float * data)
+{
+  readGyroData(_gyroCount);
+  _gRes = getGyroRes();
+
+  // Three axis gyro reading calculation
+  for (int i = 0; i < 3; i++)
+  {
+    data[i] = (float)_gyroCount[i]*_gRes;
+  }
+}
+
+void Sensor_helper::getIMUMagData(float * data)
+{
+  readMagData(_magCount);
+  _mRes = getMagRes();
+
+  // Calculate the magnetometer values in milliGauss
+  // Include factory calibration per data sheet and user environmental corrections
+  for (int i = 0; i < 3; i++)
+  {
+    data[i] = (float) _magCount[0]*_mRes*_magCalibration[0] - _magbias[0];
+  }
+}
+
+void Sensor_helper::getL3G4200DGyroData(int16_t * destination)
+{
+  // To read, we request high byte, then bit-shift and mask with low byte
+  // providing a 16 bit integer read out
+
+  // reading gyro x-axis measurements
+  destination[0] = (readSPIRegister(L3G4200D_OUT_X_H, _l3gChipSelect)&0xFF)<<8;
+  destination[0] |= (readSPIRegister(L3G4200D_OUT_X_L, _l3gChipSelect)&0xFF);
+
+  // reading gyro y-axis measurements
+  destination[1] = (readSPIRegister(L3G4200D_OUT_Y_H, _l3gChipSelect)&0xFF)<<8;
+  destination[1] |= (readSPIRegister(L3G4200D_OUT_Y_L, _l3gChipSelect)&0xFF);
+
+  // reading gyro z-axis measurements
+  destination[2] = (readSPIRegister(L3G4200D_OUT_Z_H, _l3gChipSelect)&0xFF)<<8;
+  destination[2] |= (readSPIRegister(L3G4200D_OUT_Z_L, _l3gChipSelect)&0xFF);
+}
+
+// END REGION
+
+int8_t Sensor_helper::readSPIRegister(byte address, int8_t chipSelect)
+{
+  int8_t toRead;
+
+  address |= 0x80; // bitmask read command
+
+  digitalWrite(chipSelect, LOW); // pull chip select LOW for transfer
+  SPI.transfer(address);         // Push register address
+  toRead = SPI.transfer(0x00);   // Send read request flag
+  digitalWrite(chipSelect, HIGH);// pull chip select LOW for transfer
+
+  return toRead;
+}
+
+void Sensor_helper::writeSPIRegister(byte address, byte payload, int8_t chipSelect)
+{
+  address &= 0x7F; // bitmask write command
+
+  digitalWrite(chipSelect, LOW); // pull chip select LOW for transfer
+  SPI.transfer(address);         // Push register address
+  SPI.transfer(payload);         // Push payload
+  digitalWrite(chipSelect, HIGH);// pull chip select LOW for transfer
+}
+
 void Sensor_helper::writeByte(uint8_t address, uint8_t subAddress, uint8_t data)
 {
   Wire1.beginTransmission(address);  // Initialize the Tx buffer
@@ -362,13 +613,14 @@ uint32_t Sensor_helper::MS5637Read(uint8_t CMD, uint8_t OSR)
 
 // Full disclosure: This function was copy-pasted from https://github.com/kriswiner/MPU-9250/blob/master/MPU9250_MS5637_AHRS_t3.ino
 // It looks extremely convoluted, but it works so whatever
-//
-//          /     ^^^^^^^^^            ^^^^^^^^^    \
-//         /    ^     ^   ^          ^     ^   ^     \
-//        |             ^       |             ^       |
-//        |                     |D                    |
-//         \                                         /
-//          \        \____________________/         /    J$
+/*
+          /     ^^^^^^^^^            ^^^^^^^^^    \
+         /    ^     ^   ^          ^     ^   ^     \
+        |             ^       |             ^       |
+        |                     |D                    |
+         \                                         /
+          \        \____________________/         /    J$
+*/
 unsigned char Sensor_helper::checkMS5637CRC(uint16_t * n_prom)
 {
   int cnt;
