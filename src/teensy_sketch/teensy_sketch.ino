@@ -106,16 +106,15 @@ Sensor_helper helper(Ascale, Gscale, Mscale, Mmode, &dataModule); // Data_module
 
 void setup() {
   dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
+  initializeSPI();
+
   dataModule.initialize();                  // setup data module
 
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
-
+  
   // begin serial used for GPS data
   gpsSerial.begin(gpsSerialBaud);
-
-  // begin SPI for high-accuracy gyro
-  SPI.begin();
 
   // Sensor setup
   delay(500);
@@ -141,6 +140,16 @@ void loop() {
 //                   Function definitions
 // ------------------------------------------------------------
 
+// Function to handle SPI initialisation
+void initializeSPI() {
+  // start chipselects
+  pinMode(gyroChipSelect, OUTPUT);
+  pinMode(radioChipSelect, OUTPUT);
+  pinMode(sdChipSelect, OUTPUT);
+
+  // start SPI
+  SPI.begin();
+}
 // Function to set up all sensors on IMU board
 void setupIMU() {
   // TODO: Check return of each to ensure success
