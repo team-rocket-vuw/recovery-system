@@ -50,6 +50,7 @@
 // region includes
 #include <i2c_t3.h>
 #include <SPI.h>
+#include <TinyGPS++.h>
 
 #include <Data_module.h>
 #include <Sensor_helper.h>
@@ -98,6 +99,7 @@ boolean L3G4200DReadReady = false;
 // end region
 
 // region library instantiation
+TinyGPSPlus gps;
 Data_module dataModule(sdChipSelect, debugSerialBaud, initFileName, dataFileName);
 Sensor_helper helper(Ascale, Gscale, Mscale, Mmode, &dataModule); // Data_module required for sensor debug
 // end region
@@ -108,7 +110,10 @@ void setup() {
 
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
-  
+
+  // begin serial used for GPS data
+  gpsSerial.begin(gpsSerialBaud);
+
   // begin SPI for high-accuracy gyro
   SPI.begin();
 
@@ -121,12 +126,15 @@ void setup() {
 }
 
 void loop() {
+  readGPS();
+
   readIMU();
   readGyro();
-  
+
   delay(200);
   dataModule.println(getIMULogString(accelData)+getIMULogString(gyroData)+getIMULogString(magData));
   dataModule.println(getGyroLogString(L3G4200DData));
+  dataModule.println("Got " + String(gps.charsProcessed(), DEC) + " chars");
 }
 
 // ------------------------------------------------------------
@@ -164,6 +172,13 @@ void readGyro() {
   if (L3G4200DReadReady) {
     helper.getL3G4200DGyroData(L3G4200DData);
     L3G4200DReadReady = false;
+  }
+}
+
+// function to be called each iteration to feed the GPS instantiation
+void readGPS() {
+  if (gpsSerial.available()) {
+    gps.encode(gpsSerial.read());
   }
 }
 
