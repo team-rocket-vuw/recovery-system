@@ -74,13 +74,10 @@ void Data_module::flushBuffer()
 
     // flushes buffer and writes to SD card
     File _datafile = SD.open(_fileNameBuffer, FILE_WRITE);
+    // Check if file opened correctly
     if (_datafile) {
-      Serial.println("Print: " + String(_dataBuffer) + " To: " + String(_fileNameBuffer));
       _datafile.print(_dataBuffer);
       _datafile.close();
-    } else {
-      Serial.println("File didn't open");
-      Serial.println("Name: " + String(_fileNameBuffer));
     }
 
     _writeCount = 0;
