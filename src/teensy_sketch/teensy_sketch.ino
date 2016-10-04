@@ -76,6 +76,7 @@
 #define dataExtension "csv"
 #define csvLayout "ACCEL_X,ACCEL_Y,ACCEL_Z,GYRO_X,GYRO_Y,GYRO_Z,MAG_X,MAG_Y,MAG_Z,LAT,LNG,"
 #define gpsDecimalPoints 6
+#define buzzerFrequency 2048
 // end region
 
 // region IMU configuration
@@ -157,12 +158,17 @@ void initializeSPI() {
   // start SPI
   SPI.begin();
 }
+
 // Function to set up all sensors on IMU board
 void setupIMU() {
-  // TODO: Check return of each to ensure success
-  helper.setupMPU9250();
+  delay(1000);
+  // If statement enters if MPU9250 and MS5637 initialise properly
+  if (helper.setupMPU9250() && helper.setupMS5637()) {
+    toneIMUSuccess();
+  }
+
+  // This sensor is iffy with initialising properly, so don't care about success at this point
   helper.setupAK8963();
-  helper.setupMS5637();
 }
 
 // Function to set up high-accuracy gyro and bind interrupt handler
@@ -199,12 +205,36 @@ void setupGPS() {
       dataModule.println("Checksum passed/failed: " + String(gps.passedChecksum(), DEC) + "/" + String(gps.failedChecksum(), DEC));
     }
   }
+
+  toneGPSSuccess();
 }
 
 // Gyro interrupt service routine
 void handleGyroInterrupt() {
   L3G4200DReadReady = true;
 }
+
+// Tones buzzer for successful sensor initialisation
+void toneIMUSuccess() {
+  tone(buzzerPin, buzzerFrequency, 500);
+  delay(500);
+  tone(buzzerPin, buzzerFrequency, 500);
+}
+
+// Tones buzzer for successful gps lock
+void toneGPSSuccess() {
+  tone(buzzerPin, buzzerFrequency, 1000);
+  delay(1000);
+  tone(buzzerPin, buzzerFrequency, 500);
+  delay(500);
+  tone(buzzerPin, buzzerFrequency, 1000);
+}
+
+
+// --------------------
+// Data read functions
+// --------------------
+
 
 // Function which reads each 3-axis sensor on the SMT IMU
 void readIMU() {
@@ -234,6 +264,12 @@ void readESP() {
     dataModule.print(espSerial.read());
   }
 }
+
+
+// ------------------
+// Utility functions
+// ------------------
+
 
 // Simple function for building a CSV formatted string from a 3 element array
 String getIMULogString(float * data) {
