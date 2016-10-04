@@ -61,7 +61,7 @@
 #define radioIntPin 0
 #define buzzerPin 3
 #define radioChipSelect 5
-#define sdChipSelect 6
+#define sdChipSelect 4
 // end region
 
 // region macro definitions
@@ -70,8 +70,8 @@
 #define gpsSerialBaud 9600
 #define debugSerialBaud 115200
 #define espSerialBaud 115200
-#define initFileName "init/init"
-#define dataFileName "data/data"
+#define initFileName "init"
+#define dataFileName "data"
 #define initExtension "txt"
 #define dataExtension "csv"
 #define csvLayout "ACCEL_X,ACCEL_Y,ACCEL_Z,GYRO_X,GYRO_Y,GYRO_Z,MAG_X,MAG_Y,MAG_Z,LAT,LNG,"
@@ -95,7 +95,7 @@ int16_t L3G4200DData[3] = {0,0,0}; // 3-axis high-accuracy gyro readings
 // end region
 
 // region flags
-boolean serialDebugMode = true;
+boolean serialDebugMode = false;
 boolean initialiseOK = true;
 boolean L3G4200DReadReady = false;
 // end region
@@ -105,14 +105,17 @@ TinyGPSPlus gps;
 Data_module dataModule(sdChipSelect, debugSerialBaud, initFileName, dataFileName);
 Sensor_helper helper(Ascale, Gscale, Mscale, Mmode, &dataModule); // Data_module required for sensor debug
 RF22 rf22(radioChipSelect, radioIntPin);
+
+TinyGPSCustom satsInView(gps, "GPGSV", 3);                        // $GPGSV sentence, third element
 // end region
 
 void setup() {
   dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
-  initializeSPI();
-
   dataModule.initialize();                  // setup data module
 
+  pinMode(radioChipSelect, OUTPUT);
+  pinMode(sdChipSelect, OUTPUT);
+  
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
 
@@ -149,26 +152,21 @@ void loop() {
 //                   Function definitions
 // ------------------------------------------------------------
 
-// Function to handle SPI initialisation
-void initializeSPI() {
-  // start chipselects
-  pinMode(radioChipSelect, OUTPUT);
-  pinMode(sdChipSelect, OUTPUT);
-
-  // start SPI
-  SPI.begin();
-}
-
 // Function to set up all sensors on IMU board
 void setupIMU() {
-  delay(1000);
   // If statement enters if MPU9250 and MS5637 initialise properly
   if (helper.setupMPU9250() && helper.setupMS5637()) {
-    toneIMUSuccess();
-  }
+    //toneIMUSuccess();
+    sensorsfailed = false;
+  } 
+
+  // Give the magnetometer some time
+  delay(1000);
 
   // This sensor is iffy with initialising properly, so don't care about success at this point
   helper.setupAK8963();
+
+  dataModule.flushBuffer();
 }
 
 // Function to set up high-accuracy gyro and bind interrupt handler
@@ -188,6 +186,8 @@ void setupRFM() {
     delay(100);
     dataModule.println("\nRFM22B initialisation success");
   }
+
+  dataModule.flushBuffer();
 }
 
 // Function for setting up ESP8266-01
@@ -202,11 +202,10 @@ void setupGPS() {
     delay(20);
     // Only print locking information every 50 iterations
     if (i%50 == 0) {
-      dataModule.println("Checksum passed/failed: " + String(gps.passedChecksum(), DEC) + "/" + String(gps.failedChecksum(), DEC));
+      dataModule.println("Checksum passed/failed: " + String(gps.passedChecksum(), DEC) + "/" + String(gps.failedChecksum(), DEC) + " Sats in view: " + satsInView.value());
+      dataModule.flushBuffer();
     }
   }
-
-  toneGPSSuccess();
 }
 
 // Gyro interrupt service routine
@@ -219,6 +218,7 @@ void toneIMUSuccess() {
   tone(buzzerPin, buzzerFrequency, 500);
   delay(500);
   tone(buzzerPin, buzzerFrequency, 500);
+  delay(500);
 }
 
 // Tones buzzer for successful gps lock

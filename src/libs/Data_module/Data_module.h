@@ -7,7 +7,7 @@
 #define Data_module_h
 
 #include "Arduino.h"
-#include <SD_t3.h>
+#include <SD.h>
 
 class Data_module
 {
@@ -21,6 +21,8 @@ class Data_module
     void println(String stringToPrint);
 
     void initComplete();
+
+    void flushBuffer();
 
   private:
     String _initFileName, _dataFileName, _dataBuffer;
