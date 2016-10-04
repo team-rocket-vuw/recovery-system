@@ -75,6 +75,7 @@
 #define initExtension "txt"
 #define dataExtension "csv"
 #define csvLayout "ACCEL_X,ACCEL_Y,ACCEL_Z,GYRO_X,GYRO_Y,GYRO_Z,MAG_X,MAG_Y,MAG_Z,LAT,LNG,"
+#define gpsDecimalPoints 6
 // end region
 
 // region IMU configuration
@@ -139,7 +140,7 @@ void loop() {
   readIMU();
 
   // Print all information
-  dataModule.print(getIMULogString(accelData)+getIMULogString(gyroData)+getIMULogString(magData));
+  dataModule.print(getIMULogString(accelData) + getIMULogString(gyroData) + getIMULogString(magData));
   dataModule.println(getGPSLogString());
 }
 
@@ -190,7 +191,7 @@ void setupESP() {
 
 // Function for waiting for GPS communication and locking
 void setupGPS() {
-  for (int i = 0; !gps.location.isUpdated(); i++) {    
+  for (int i = 0; !gps.location.isUpdated(); i++) {
     readGPS();
     delay(20);
     // Only print locking information every 50 iterations
@@ -246,6 +247,5 @@ String getGyroLogString(int16_t * data) {
 
 // Function for returning formatted GPS string
 String getGPSLogString() {
-  return (String(gps.location.lat(),6) + "," + String(gps.location.lng(),6) + ",");
+  return (String(gps.location.lat(), gpsDecimalPoints) + "," + String(gps.location.lng(), gpsDecimalPoints) + ",");
 }
-
