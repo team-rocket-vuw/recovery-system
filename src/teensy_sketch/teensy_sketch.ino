@@ -50,6 +50,8 @@
 // region includes
 #include <i2c_t3.h>
 #include <SPI.h>
+#include <TinyGPS++.h>
+#include <RF22.h>
 
 #include <Data_module.h>
 #include <Sensor_helper.h>
@@ -57,9 +59,7 @@
 
 // region pin definitions
 #define radioIntPin 0
-#define gyroIntPin 1
 #define buzzerPin 3
-#define gyroChipSelect 4
 #define radioChipSelect 5
 #define sdChipSelect 6
 // end region
@@ -74,6 +74,8 @@
 #define dataFileName "data/data"
 #define initExtension "txt"
 #define dataExtension "csv"
+#define csvLayout "ACCEL_X,ACCEL_Y,ACCEL_Z,GYRO_X,GYRO_Y,GYRO_Z,MAG_X,MAG_Y,MAG_Z,LAT,LNG,"
+#define gpsDecimalPoints 6
 // end region
 
 // region IMU configuration
@@ -98,41 +100,63 @@ boolean L3G4200DReadReady = false;
 // end region
 
 // region library instantiation
+TinyGPSPlus gps;
 Data_module dataModule(sdChipSelect, debugSerialBaud, initFileName, dataFileName);
 Sensor_helper helper(Ascale, Gscale, Mscale, Mmode, &dataModule); // Data_module required for sensor debug
+RF22 rf22(radioChipSelect, radioIntPin);
 // end region
 
 void setup() {
   dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
+  initializeSPI();
+
   dataModule.initialize();                  // setup data module
 
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
-  
-  // begin SPI for high-accuracy gyro
-  SPI.begin();
+
+  // begin serial used for GPS and ESP
+  gpsSerial.begin(gpsSerialBaud);
+  espSerial.begin(espSerialBaud);
 
   // Sensor setup
-  delay(500);
   setupIMU();
-  setupGyro();
+  // Radio setup
+  setupRFM();
+  // WiFi setup
+  setupESP();
+  // GPS setup
+  setupGPS();
 
+  // Notify dataModule to flush init buffers
   dataModule.initComplete();
+  // Print CSV layout to file
+  dataModule.println(csvLayout);
 }
 
 void loop() {
+  // get information from sensors and GPS
+  readGPS();
   readIMU();
-  readGyro();
-  
-  delay(200);
-  dataModule.println(getIMULogString(accelData)+getIMULogString(gyroData)+getIMULogString(magData));
-  dataModule.println(getGyroLogString(L3G4200DData));
+
+  // Print all information
+  dataModule.print(getIMULogString(accelData) + getIMULogString(gyroData) + getIMULogString(magData));
+  dataModule.println(getGPSLogString());
 }
 
 // ------------------------------------------------------------
 //                   Function definitions
 // ------------------------------------------------------------
 
+// Function to handle SPI initialisation
+void initializeSPI() {
+  // start chipselects
+  pinMode(radioChipSelect, OUTPUT);
+  pinMode(sdChipSelect, OUTPUT);
+
+  // start SPI
+  SPI.begin();
+}
 // Function to set up all sensors on IMU board
 void setupIMU() {
   // TODO: Check return of each to ensure success
@@ -143,8 +167,38 @@ void setupIMU() {
 
 // Function to set up high-accuracy gyro and bind interrupt handler
 void setupGyro() {
-  helper.setupL3G4200D(L3G4200DScale, gyroChipSelect);
-  attachInterrupt(digitalPinToInterrupt(gyroIntPin), handleGyroInterrupt, FALLING);
+  helper.setupL3G4200D(L3G4200DScale, -1);
+  attachInterrupt(digitalPinToInterrupt(1), handleGyroInterrupt, FALLING);
+}
+
+// Function to set up RFM radio module
+void setupRFM() {
+  if (!rf22.init()) {
+    dataModule.println("\nRFM22B failed to initialise");
+  } else {
+    rf22.setModeTx(); // Turns off Rx
+    rf22.setTxPower(RF22_TXPOW_8DBM);
+    rf22.setModemConfig(RF22::UnmodulatedCarrier);
+    delay(100);
+    dataModule.println("\nRFM22B initialisation success");
+  }
+}
+
+// Function for setting up ESP8266-01
+void setupESP() {
+  // TODO setup ESP
+}
+
+// Function for waiting for GPS communication and locking
+void setupGPS() {
+  for (int i = 0; !gps.location.isUpdated(); i++) {
+    readGPS();
+    delay(20);
+    // Only print locking information every 50 iterations
+    if (i%50 == 0) {
+      dataModule.println("Checksum passed/failed: " + String(gps.passedChecksum(), DEC) + "/" + String(gps.failedChecksum(), DEC));
+    }
+  }
 }
 
 // Gyro interrupt service routine
@@ -167,6 +221,20 @@ void readGyro() {
   }
 }
 
+// function to be called each iteration to feed the GPS instantiation
+void readGPS() {
+  while (gpsSerial.available()) {
+    gps.encode(gpsSerial.read());
+  }
+}
+
+// Blocking function to read info from ESP
+void readESP() {
+  while (espSerial.available()) {
+    dataModule.print(espSerial.read());
+  }
+}
+
 // Simple function for building a CSV formatted string from a 3 element array
 String getIMULogString(float * data) {
   return (String(data[0], DEC) + "," + String(data[1], DEC) + "," + String(data[2], DEC) + ",");
@@ -175,4 +243,9 @@ String getIMULogString(float * data) {
 // Similar function as above, with different type parameter
 String getGyroLogString(int16_t * data) {
   return (String(data[0], DEC) + "," + String(data[1], DEC) + "," + String(data[2], DEC) + ",");
+}
+
+// Function for returning formatted GPS string
+String getGPSLogString() {
+  return (String(gps.location.lat(), gpsDecimalPoints) + "," + String(gps.location.lng(), gpsDecimalPoints) + ",");
 }
