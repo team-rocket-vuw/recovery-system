@@ -115,7 +115,7 @@ void setup() {
 
   pinMode(radioChipSelect, OUTPUT);
   pinMode(sdChipSelect, OUTPUT);
-  
+
   // begin I2C for MPU IMU
   Wire1.begin(I2C_MASTER, 0x000, I2C_PINS_29_30, I2C_PULLUP_EXT, I2C_RATE_400);
 
@@ -156,9 +156,9 @@ void loop() {
 void setupIMU() {
   // If statement enters if MPU9250 and MS5637 initialise properly
   if (helper.setupMPU9250() && helper.setupMS5637()) {
-    //toneIMUSuccess();
+    toneIMUSuccess(); // Currently this causes current issues with the circuit, but will be left in as is intentional
     sensorsfailed = false;
-  } 
+  }
 
   // Give the magnetometer some time
   delay(1000);
