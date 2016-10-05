@@ -1,6 +1,5 @@
 #include "Arduino.h"
 #include <SD.h>
-#include <SD_t3.h>
 #include <SPI.h>
 #include "Data_module.h"
 
@@ -33,9 +32,9 @@ boolean Data_module::initialize()
     println("Initialising card");
     _initFileName = getIncrementedFileName(_initFileName, "txt");
     _dataFileName = getIncrementedFileName(_dataFileName, "csv");
+    return true;
   }
 
-  return true;
 }
 
 // NOTE: Must be called before initialize()
@@ -47,13 +46,7 @@ void Data_module::setDebugMode(boolean isDebugMode)
 void Data_module::initComplete()
 {
   _isInitState = false;
-
-  if (!_serialDebug) {
-    // flush buffer when init complete
-    File _datafile = SD.open(_fileNameBuffer, O_CREAT | O_WRITE);
-    _datafile.print(_dataBuffer);
-    _datafile.close();
-  }
+  flushBuffer();
 }
 
 String Data_module::getIncrementedFileName(String name, String extension)
@@ -68,26 +61,40 @@ String Data_module::getIncrementedFileName(String name, String extension)
   return name + String(fileCount) + "." + extension;
 }
 
-void Data_module::print(String toPrint)
+
+void Data_module::flushBuffer()
 {
-  if (_serialDebug) {
-    Serial.print(toPrint);
-  } else {
+  if (!_serialDebug) {
+    // Set up filename buffer
     if (_isInitState) {
       _initFileName.toCharArray(_fileNameBuffer, 20);
     } else {
       _dataFileName.toCharArray(_fileNameBuffer, 20);
     }
 
-    _writeCount++;
-    _dataBuffer += toPrint;
-    if (_writeCount == 64) {
-      File _datafile = SD.open(_fileNameBuffer, O_CREAT | O_WRITE);
+    // flushes buffer and writes to SD card
+    File _datafile = SD.open(_fileNameBuffer, FILE_WRITE);
+    // Check if file opened correctly
+    if (_datafile) {
       _datafile.print(_dataBuffer);
       _datafile.close();
+    }
 
-      _writeCount = 0;
-      _dataBuffer = "";
+    _writeCount = 0;
+    _dataBuffer = "";
+  }
+}
+
+void Data_module::print(String toPrint)
+{
+  if (_serialDebug) {
+    Serial.print(toPrint);
+  } else {
+    _writeCount++;
+    _dataBuffer += toPrint;
+
+    if (_writeCount == 64) {
+      flushBuffer();
     }
   }
 }
