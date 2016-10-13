@@ -12,25 +12,27 @@
 class Data_module
 {
   public:
-    Data_module(int chipSelect, int serialBaud, String initFileName, String dataFileName);
+    Data_module(int chipSelect, int serialBaud = 115200, String initFileName = "init/init", String dataFileName = "data/data");
 
-    boolean initialize();
-    void setDebugMode(boolean isDebugMode);
+      boolean initialize();
+      void setDebugMode(boolean isDebugMode);
 
-    void print(String stringToPrint);
-    void println(String stringToPrint);
+      void print(String stringToPrint);
+      void println(String stringToPrint);
 
-    void initComplete();
+      void initComplete();
 
-    void flushBuffer();
+      void flushBuffer();
 
-  private:
-    String _initFileName, _dataFileName, _dataBuffer;
-    int _cs, _writeCount, _serialBaud;
-    boolean _isInitState, _serialDebug;
-    char _fileNameBuffer[20];
+    private:
+      int _cs, _serialBaud;
+      String _initFileName, _dataFileName, _dataBuffer;
+      int _writeCount;
+      boolean _isInitState = true;
+      boolean _serialDebug = false;
+      char _fileNameBuffer[20];
 
-    String getIncrementedFileName(String name, String extension);
+      String getIncrementedFileName(String name, String extension);
 };
 
 #endif
