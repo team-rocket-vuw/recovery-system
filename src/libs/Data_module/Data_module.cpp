@@ -6,16 +6,12 @@
 /*
   Setting up library. Pass in SD card chip select, serial baud rate, and filenames
 */
-Data_module::Data_module(int chipSelect, int serialBaud, String initFileName, String dataFileName)
-{
-  _cs = chipSelect;
-  _serialBaud = serialBaud;
-  _initFileName = initFileName;
-  _dataFileName = dataFileName;
+Data_module::Data_module(int chipSelect, int serialBaud, String initFileName, String dataFileName) :_cs(chipSelect),
+                                                                                                    _serialBaud(serialBaud),
+                                                                                                    _initFileName(initFileName),
+                                                                                                    _dataFileName(dataFileName)
+{}
 
-  _isInitState = true; // This value is true until set by calling initComplete()
-  _serialDebug = false; // This value defaults to false until setDebugMode() is called
-}
 
 boolean Data_module::initialize()
 {

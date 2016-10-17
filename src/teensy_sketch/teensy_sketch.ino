@@ -157,7 +157,6 @@ void setupIMU() {
   // If statement enters if MPU9250 and MS5637 initialise properly
   if (helper.setupMPU9250() && helper.setupMS5637()) {
     toneIMUSuccess(); // Currently this causes current issues with the circuit, but will be left in as is intentional
-    sensorsfailed = false;
   }
 
   // Give the magnetometer some time
