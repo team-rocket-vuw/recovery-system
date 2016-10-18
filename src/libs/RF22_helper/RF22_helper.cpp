@@ -4,18 +4,11 @@
 /*
   Set up RF22 Radio module
 */
-RF22_helper::RF22_helper(int radioChipSelect, int radioIntPin) {
-  // TODO are these two values needed anywhere else than the initialisation of the
-  // rf22 module? if not then we can remove them as fields
-  _radioChipSelect = radioChipSelect;
-  _radioIntPin = radioIntPin;
-
+RF22_helper::RF22_helper(int radioChipSelect, int radioIntPin) : _radioChipSelect(radioChipSelect),
+                                                                 _radioIntPin(radioIntPin)
+{
   RF22 rf22(radioChipSelect, radioIntPin);
-  // TODO again, not sure if this is right? Can't really test it
   _rf22 = rf22;
-
-  // Initially set buffer to be empty so that anything can write to it
-  _messageBufferCount = 0;
 }
 
 bool RF22_helper::initialize() {

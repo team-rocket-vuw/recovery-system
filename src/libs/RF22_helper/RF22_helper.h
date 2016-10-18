@@ -31,9 +31,8 @@ class RF22_helper
 
     // TODO what size buffer do we actually need?
     int _messageBitBuffer[BIT_BUFFER_SIZE];
-    int _messageBufferCount;
+    int _messageBufferCount = 0;
 
-    // TODO not sure if this is how you'd do this?
     RF22 _rf22;
 };
 
