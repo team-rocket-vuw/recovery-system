@@ -42,9 +42,9 @@ void setup() {
 
   delay(1000);
 
-  Serial.println(rf22.initialize());
+  rf22.initialize();
 
-  rf22InterruptTimer.begin(transmit, 10000);
+  rf22InterruptTimer.begin(transmit, 3333);
 }
 
 void transmit() {
