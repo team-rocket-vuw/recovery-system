@@ -11,6 +11,7 @@
 #define BIT_BUFFER_SIZE 1000
 
 #include <RF22.h>
+#include <Arduino.h>
 
 class RF22_helper
 {
