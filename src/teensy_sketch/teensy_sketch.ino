@@ -97,6 +97,8 @@ void setupGPS() {
     delay(20);
     // Only print locking information every 50 iterations
     if (i % 50 == 0) {
+      rf22.enqueueMessage(getGPSLockingMessage());
+
       dataModule.println("Checksum passed/failed: " + String(gps.passedChecksum(), DEC) + "/" + String(gps.failedChecksum(), DEC) + " Sats in view: " + satsInView.value());
       // Used for flushing SD card buffer when not in debug mode
       dataModule.flushBuffer();
@@ -113,4 +115,12 @@ void readGPS() {
 
 String getGPSMessageString() {
     return rfmMessagePilot + (String(gps.location.lat(), gpsDecimalPoints) + "," + String(gps.location.lng(), gpsDecimalPoints) + ",");
+}
+
+String getGPSLockingMessage() {
+  String inView = satsInView.value();
+  if (inView.length() < 2) {
+    inView = "00";
+  }
+  return String(rfmMessagePilot) + "SIV=" + String(inView);
 }
