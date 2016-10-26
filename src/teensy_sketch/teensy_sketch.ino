@@ -69,27 +69,40 @@ void setup() {
   pinMode(sdChipSelect, OUTPUT);
   gpsSerial.begin(gpsSerialBaud);
   mockWireless.begin(debugSerialBaud);
-
-  dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
-  dataModule.initialize();                  // setup data module
-
-  dataModule.println("Waiting for command");
-  String commandMessage = waitMockCommand();
-  dataModule.println("Command: " + commandMessage);
   
+  String commandMessage = waitMockCommand();
+  if (commandMessage == "start") {
+    dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
+    sendMockSerial(dataModule.initialize() ? "DM_OK" : "DM_FAIL");
+  }
+
   delay(1000);
+  
+  commandMessage = waitMockCommand();
+  if (commandMessage == "cont") {
+    sendMockSerial(rf22.initialize() ? "RFM_OK" : "RFM_FAIL");
+    rf22InterruptTimer.begin(transmit, rfmBitSpacingMicroseconds);
+  }
 
-  rf22.initialize();
+  
+  if (commandMessage == "cont") {
+    sendMockSerial("GPS_LOCK");
+    
+    setupGPS();
+    
+    sendMockSerial("GPS_OK");
+  }
 
-  sendMockSerial("RFM_OK");
+  
+  commandMessage = waitMockCommand();
 
-  rf22InterruptTimer.begin(transmit, rfmBitSpacingMicroseconds);
-  setupGPS();
+  if (commandMessage == "begin_loop") {
+    // Notify dataModule to flush init buffers
+    dataModule.initComplete();
+  } else {
+    while (true);
+  }
 
-  sendMockSerial("GPS_OK");
-
-  // Notify dataModule to flush init buffers
-  dataModule.initComplete();
 }
 
 void loop() {
