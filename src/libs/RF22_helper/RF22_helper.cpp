@@ -24,15 +24,21 @@ bool RF22_helper::initialize() {
 }
 
 void RF22_helper::b_broadcastMessage(String message, int broadcastCount) {
-    for (int i = 0; i < broadcastCount; i++) {
-        // Wait for buffer to be empty
-        while(_messageBufferCount > 0) {}
+    _rf22.spiWrite(0x07, 0x08); // turn tx on
 
-        _rf22.spiWrite(0x07, 0x08); // turn tx on
-        RF22_helper::enqueueMessage(message);
-        delay(5000);
-        _rf22.spiWrite(0x07, 0x01); // turn tx off
+    for (int i = 0; i < broadcastCount; i++) {
+        enqueueMessage(message);
+
+        // Wait for buffer to be empty
+        while(_messageBufferCount > 0) {
+          transmitBuffer();
+          delayMicroseconds(10000);
+        }
+        // Space each message by a second
+        delay(1000);
     }
+
+    _rf22.spiWrite(0x07, 0x01); // turn tx off
 }
 
 bool RF22_helper::enqueueMessage(String stringToEnqueue) {
