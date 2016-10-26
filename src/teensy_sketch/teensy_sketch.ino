@@ -51,6 +51,8 @@
 
 // region flags
 boolean serialDebugMode = true;
+String baseStationBuffer = "";
+boolean skipGps = false;
 // end region
 
 // region library instantiation
@@ -63,46 +65,38 @@ RF22_helper rf22(radioChipSelect, radioIntPin);
 IntervalTimer rf22InterruptTimer;
 // end region
 
-
 void setup() {
   pinMode(radioChipSelect, OUTPUT);
   pinMode(sdChipSelect, OUTPUT);
   gpsSerial.begin(gpsSerialBaud);
   mockWireless.begin(debugSerialBaud);
-  
+
   String commandMessage = waitMockCommand();
+
   if (commandMessage == "start") {
+    sendAcknowledge();
+
+    delay(1000);
     dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
-    sendMockSerial(dataModule.initialize() ? "DM_OK" : "DM_FAIL");
-  }
+    sendMockInitSerial(dataModule.initialize() ? "DM_OK" : "DM_FAIL");
 
-  delay(1000);
-  
-  commandMessage = waitMockCommand();
-  if (commandMessage == "cont") {
-    sendMockSerial(rf22.initialize() ? "RFM_OK" : "RFM_FAIL");
+    sendMockInitSerial(rf22.initialize() ? "RFM_OK" : "RFM_FAIL");
     rf22InterruptTimer.begin(transmit, rfmBitSpacingMicroseconds);
-  }
 
-  
-  if (commandMessage == "cont") {
-    sendMockSerial("GPS_LOCK");
-    
-    setupGPS();
-    
-    sendMockSerial("GPS_OK");
-  }
+    sendMockInitSerial("GPS_LOCK");
+    sendMockInitSerial(setupGPS() ? "GPS_OK" : "GPS_SKIP");
 
-  
-  commandMessage = waitMockCommand();
-
-  if (commandMessage == "begin_loop") {
     // Notify dataModule to flush init buffers
     dataModule.initComplete();
-  } else {
-    while (true);
-  }
 
+    commandMessage = waitMockCommand();
+
+    if (commandMessage == "begin_loop") {
+      sendAcknowledge();
+    } else {
+      while (true);
+    }
+  }
 }
 
 void loop() {
@@ -116,9 +110,10 @@ void transmit() {
 }
 
 // Function for waiting for GPS communication and locking
-void setupGPS() {
+boolean setupGPS() {
   for (int i = 0; !gps.location.isUpdated(); i++) {
     readGPS();
+    encodeMockSerial();
     delay(20);
     // Only print locking information every 50 iterations
     if (i % 50 == 0) {
@@ -127,6 +122,30 @@ void setupGPS() {
       dataModule.println("Checksum passed/failed: " + String(gps.passedChecksum(), DEC) + "/" + String(gps.failedChecksum(), DEC) + " Sats in view: " + satsInView.value());
       // Used for flushing SD card buffer when not in debug mode
       dataModule.flushBuffer();
+    } else if (skipGps) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void sendAcknowledge() {
+  sendMockSerial("ok");
+}
+
+void encodeMockSerial() {
+  while (mockWireless.available()) {
+    char rec = mockWireless.read();
+    if (String(rec) == "\n" || String(rec) == "\r") {
+      if (baseStationBuffer == "skip_gps") {
+        skipGps = true;
+        baseStationBuffer = "";
+        flushSerialBuffer();
+        sendAcknowledge();
+      }
+    } else {
+      baseStationBuffer += String(rec);
     }
   }
 }
@@ -151,7 +170,15 @@ String getGPSLockingMessage() {
 }
 
 void sendMockSerial(String message) {
+  // Block until serial ready
+  while (!mockWireless.available());
   mockWireless.println(message);
+}
+
+void sendMockInitSerial(String message) {
+    // Block until serial ready
+    while (!mockWireless.available());
+    mockWireless.print(message + ";");
 }
 
 String waitMockCommand() {
@@ -169,12 +196,12 @@ String waitMockCommand() {
         } else {
           recieved += String(recChar);
         }
-    } 
+    }
   }
 
   // Clear out what's left in the buffer
   flushSerialBuffer();
-  
+
   return recieved;
 }
 
@@ -184,4 +211,3 @@ void flushSerialBuffer() {
     char z = mockWireless.read();
   }
 }
-
