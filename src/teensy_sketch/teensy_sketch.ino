@@ -37,6 +37,7 @@
 
 // region macro definitions
 #define gpsSerial Serial3
+#define mockWireless Serial2
 #define gpsSerialBaud 9600
 #define debugSerialBaud 115200
 #define initFileName "init"
@@ -66,18 +67,26 @@ IntervalTimer rf22InterruptTimer;
 void setup() {
   pinMode(radioChipSelect, OUTPUT);
   pinMode(sdChipSelect, OUTPUT);
-  gpsSerial.begin(9600);
+  gpsSerial.begin(gpsSerialBaud);
+  mockWireless.begin(debugSerialBaud);
 
   dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
   dataModule.initialize();                  // setup data module
 
+  dataModule.println("Waiting for command");
+  String commandMessage = waitMockCommand();
+  dataModule.println("Command: " + commandMessage);
+  
   delay(1000);
 
   rf22.initialize();
 
+  sendMockSerial("RFM_OK");
+
   rf22InterruptTimer.begin(transmit, rfmBitSpacingMicroseconds);
   setupGPS();
 
+  sendMockSerial("GPS_OK");
 
   // Notify dataModule to flush init buffers
   dataModule.initComplete();
@@ -127,3 +136,39 @@ String getGPSLockingMessage() {
   }
   return String(rfmMessagePilot) + "SIV=" + String(inView);
 }
+
+void sendMockSerial(String message) {
+  mockWireless.println(message);
+}
+
+String waitMockCommand() {
+  // Block until command recieved
+  while (!mockWireless.available());
+
+  String recieved;
+  boolean stringComplete = false;
+  while (!stringComplete) {
+    // Only try read a char if it's available
+    if (mockWireless.available()) {
+       char recChar = mockWireless.read();
+       if (String(recChar) == "\n" || String(recChar) == "\r") {
+          stringComplete = true;
+        } else {
+          recieved += String(recChar);
+        }
+    } 
+  }
+
+  // Clear out what's left in the buffer
+  flushSerialBuffer();
+  
+  return recieved;
+}
+
+// Stupid hack to clear out any remaining character
+void flushSerialBuffer() {
+  while (mockWireless.available()) {
+    char z = mockWireless.read();
+  }
+}
+
