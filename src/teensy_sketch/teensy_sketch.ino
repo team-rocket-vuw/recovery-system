@@ -66,6 +66,7 @@ IntervalTimer rf22InterruptTimer;
 void setup() {
   pinMode(radioChipSelect, OUTPUT);
   pinMode(sdChipSelect, OUTPUT);
+  gpsSerial.begin(9600);
 
   dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
   dataModule.initialize();                  // setup data module
@@ -75,6 +76,8 @@ void setup() {
   rf22.initialize();
 
   rf22InterruptTimer.begin(transmit, rfmBitSpacingMicroseconds);
+  setupGPS();
+
 
   // Notify dataModule to flush init buffers
   dataModule.initComplete();
