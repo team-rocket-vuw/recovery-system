@@ -37,7 +37,7 @@
 
 // region macro definitions
 #define gpsSerial Serial3
-#define mockWireless Serial2
+#define baseStationConnection Serial2
 #define gpsSerialBaud 9600
 #define debugSerialBaud 115200
 #define initFileName "init"
@@ -53,6 +53,8 @@
 boolean serialDebugMode = true;
 String baseStationBuffer = "";
 boolean skipGps = false;
+
+int i = 0;
 // end region
 
 // region library instantiation
@@ -65,37 +67,63 @@ RF22_helper rf22(radioChipSelect, radioIntPin);
 IntervalTimer rf22InterruptTimer;
 // end region
 
+// --------------------- SETUP ---------------------
 void setup() {
   pinMode(radioChipSelect, OUTPUT);
   pinMode(sdChipSelect, OUTPUT);
   gpsSerial.begin(gpsSerialBaud);
-  mockWireless.begin(debugSerialBaud);
+  baseStationConnection.begin(debugSerialBaud);
 
-  while (!Serial.available());
+  runInitialisationRoutine();
+}
 
-  Serial.println("Waiting for initialisation");
-  String commandMessage = waitMockCommand();
-  Serial.println("Recieved: " + commandMessage);
+// --------------------- LOOP ---------------------
+void loop() {
+  i += 1;
+  readGPS();
+  rf22.enqueueMessage(getGPSMessageString());
+
+  sendStateUpdate("GPSLAT=" + String(65.0 + (i*0.0005)));
+  sendStateUpdate("GPSLNG=" + String(112.0 + (i*0.0005)));
+  sendStateUpdate(getGPSLockingMessage());
+  delay(10);
+}
+
+
+// -------- RADIO AND INIT FUNCTIONS ----------
+/*
+Function used in as the RFM22 interrupt handler for timer driven radio communication
+*/
+void transmit() {
+  rf22.transmitBuffer();
+}
+
+/*
+Function to be called to begin initialisation flow. Takes commands from base station,
+initialises components and reports state updates. More on these state messages can be found in
+base-station-sketch.ino
+*/
+void runInitialisationRoutine() {
+  String commandMessage = receiveCommand();
 
   if (commandMessage == "start") {
     sendAcknowledge();
 
-    Serial.println("\n--------- Starting initialisation ---------\n");
+    // set debug flag in library instance
+    dataModule.setDebugMode(serialDebugMode);
+    // Send result of initialisation to base station
+    sendStateUpdate(dataModule.initialize() ? "DM=OK" : "DM=FAIL");
 
-
-    dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
-    sendMockStateSerial(dataModule.initialize() ? "DM=OK" : "DM=FAIL");
-
-    sendMockStateSerial(rf22.initialize() ? "RFM=OK" : "RFM=FAIL");
+    sendStateUpdate(rf22.initialize() ? "RFM=OK" : "RFM=FAIL");
     rf22InterruptTimer.begin(transmit, rfmBitSpacingMicroseconds);
 
-    sendMockStateSerial("GPS=locking");
-    sendMockStateSerial(setupGPS() ? "GPS=ready" : "GPS=skipped");
+    sendStateUpdate("GPS=locking");
+    sendStateUpdate(setupGPS() ? "GPS=ready" : "GPS=skipped");
 
     // Notify dataModule to flush init buffers
     dataModule.initComplete();
 
-    commandMessage = waitMockCommand();
+    commandMessage = receiveCommand();
 
     if (commandMessage == "begin") {
       sendAcknowledge();
@@ -105,24 +133,11 @@ void setup() {
   }
 }
 
-void loop() {
-  readGPS();
-  rf22.enqueueMessage(getGPSMessageString());
-
-  sendMockStateSerial("GPSLAT=" + String(69));
-  sendMockStateSerial("GPSLNG=" + String(420));
-  delay(1000);
-}
-
-void transmit() {
-  rf22.transmitBuffer();
-}
-
 // Function for waiting for GPS communication and locking
 boolean setupGPS() {
   for (int i = 0; !gps.location.isUpdated(); i++) {
     readGPS();
-    encodeMockSerial();
+    readMessageStream();
     delay(20);
     // Only print locking information every 50 iterations
     if (i % 50 == 0) {
@@ -130,7 +145,7 @@ boolean setupGPS() {
 
       dataModule.println("Checksum passed/failed: " + String(gps.passedChecksum(), DEC) + "/" + String(gps.failedChecksum(), DEC) + " Sats in view: " + satsInView.value());
 
-      sendMockStateSerial(getGPSLockingMessage());
+      sendStateUpdate(getGPSLockingMessage());
       // Used for flushing SD card buffer when not in debug mode
       dataModule.flushBuffer();
     } else if (skipGps) {
@@ -141,13 +156,39 @@ boolean setupGPS() {
   return true;
 }
 
-void sendAcknowledge() {
-  sendMockSerial("ok");
+
+// -------- BASE-STATION COMMUNICATION FUNCTIONS ----------
+/*
+Function for sending message over base station communication channel
+*/
+void sendMessage(String message) {
+  baseStationConnection.println(message);
 }
 
-void encodeMockSerial() {
-  while (mockWireless.available()) {
-    char rec = mockWireless.read();
+/*
+Function for sending state update message over base station communication channel
+as well as printing the state update to the dataModule instance
+*/
+void sendStateUpdate(String message) {
+    baseStationConnection.print(message + ";");
+    dataModule.println("State update: " + message);
+}
+
+/*
+Function for sending acknowledge message over base station communication channel
+*/
+void sendAcknowledge() {
+  sendMessage("ok");
+}
+
+/*
+Function for reading from the message steam being recieved from the base station.
+Takes a command, splits the newline and/or cariage return character from the end
+and flushes anything that's left in the inbound serial buffer
+*/
+void readMessageStream() {
+  while (baseStationConnection.available()) {
+    char rec = baseStationConnection.read();
     if (String(rec) == "\n" || String(rec) == "\r") {
       if (baseStationBuffer == "skip_gps") {
         skipGps = true;
@@ -169,38 +210,20 @@ void readGPS() {
   }
 }
 
-String getGPSMessageString() {
-    return rfmMessagePilot + (String(gps.location.lat(), gpsDecimalPoints) + "," + String(gps.location.lng(), gpsDecimalPoints) + ",");
-}
-
-String getGPSLockingMessage() {
-  String inView = satsInView.value();
-  if (inView.length() < 2) {
-    inView = "00";
-  }
-  return String(rfmMessagePilot) + "GPSVIS=" + String(inView);
-}
-
-void sendMockSerial(String message) {
-  mockWireless.println(message);
-}
-
-void sendMockStateSerial(String message) {
-    mockWireless.print(message + ";");
-    Serial.println("State update: " + message);
-}
-
-String waitMockCommand() {
+/*
+Blocking function used to wait for receiving commands from the base station. Blocks until entire command is recieved
+*/
+String receiveCommand() {
   // Block until command recieved
-  while (!mockWireless.available());
+  while (!baseStationConnection.available());
 
   String recieved;
   boolean stringComplete = false;
   while (!stringComplete) {
     // Only try read a char if it's available
-    if (mockWireless.available()) {
-       char recChar = mockWireless.read();
-
+    if (baseStationConnection.available()) {
+       char recChar = baseStationConnection.read();
+      // Complete the command if nl/cr found, else concat char onto command
        if (String(recChar) == "\n" || String(recChar) == "\r") {
           stringComplete = true;
         } else {
@@ -217,7 +240,20 @@ String waitMockCommand() {
 
 // Stupid hack to clear out any remaining character
 void flushSerialBuffer() {
-  while (mockWireless.available()) {
-    char z = mockWireless.read();
+  while (baseStationConnection.available()) {
+    baseStationConnection.read();
   }
+}
+
+// ----------------- UTILITY FUNCTIONS ----------------------
+String getGPSMessageString() {
+    return rfmMessagePilot + (String(gps.location.lat(), gpsDecimalPoints) + "," + String(gps.location.lng(), gpsDecimalPoints) + ",");
+}
+
+String getGPSLockingMessage() {
+  String inView = satsInView.value();
+  if (inView.length() < 2) {
+    inView = "00";
+  }
+  return "GPSVIS=" + String(inView);
 }
