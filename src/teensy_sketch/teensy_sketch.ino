@@ -83,8 +83,8 @@ void loop() {
   readGPS();
   rf22.enqueueMessage(getGPSMessageString());
 
-  sendStateUpdate("GPSLAT=" + String(65.0 + (i*0.0005)));
-  sendStateUpdate("GPSLNG=" + String(112.0 + (i*0.0005)));
+  sendStateUpdate("GPSLAT=" + String(-41.288 + (i*0.00005), 5));
+  sendStateUpdate("GPSLNG=" + String(174.762 + (i*0.00005), 5));
   sendStateUpdate(getGPSLockingMessage());
   delay(10);
 }
@@ -247,7 +247,11 @@ void flushSerialBuffer() {
 
 // ----------------- UTILITY FUNCTIONS ----------------------
 String getGPSMessageString() {
-    return rfmMessagePilot + (String(gps.location.lat(), gpsDecimalPoints) + "," + String(gps.location.lng(), gpsDecimalPoints) + ",");
+    if (gps.location.lat() == 0 || gps.location.lng() == 0) {
+      return rfmMessagePilot + getGPSLockingMessage();
+    } else {
+      return rfmMessagePilot + (String(gps.location.lat(), gpsDecimalPoints) + "," + String(gps.location.lng(), gpsDecimalPoints) + ",");
+    }
 }
 
 String getGPSLockingMessage() {
