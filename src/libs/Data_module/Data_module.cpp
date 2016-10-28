@@ -18,17 +18,19 @@ boolean Data_module::initialize()
   if (_serialDebug) {
     Serial.begin(_serialBaud);
     while(!Serial.available()){} // block if in debug mode
-  }
-
-  //SD card setup
-  if (!SD.begin(_cs)) {
-    println("Card failed to initialise");
-    return false;
-  } else {
-    println("Initialising card");
-    _initFileName = getIncrementedFileName(_initFileName, "txt");
-    _dataFileName = getIncrementedFileName(_dataFileName, "csv");
     return true;
+  } else {
+
+    //SD card setup
+    if (!SD.begin(_cs)) {
+      println("Card failed to initialise");
+      return false;
+    } else {
+      println("Initialising card");
+      _initFileName = getIncrementedFileName(_initFileName, "txt");
+      _dataFileName = getIncrementedFileName(_dataFileName, "csv");
+      return true;
+    }
   }
 
 }

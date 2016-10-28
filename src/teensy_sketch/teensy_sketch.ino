@@ -37,6 +37,7 @@
 
 // region macro definitions
 #define gpsSerial Serial3
+#define baseStationConnection Serial2
 #define gpsSerialBaud 9600
 #define debugSerialBaud 115200
 #define initFileName "init"
@@ -50,6 +51,10 @@
 
 // region flags
 boolean serialDebugMode = true;
+String baseStationBuffer = "";
+boolean skipGps = false;
+
+int i = 0;
 // end region
 
 // region library instantiation
@@ -62,49 +67,138 @@ RF22_helper rf22(radioChipSelect, radioIntPin);
 IntervalTimer rf22InterruptTimer;
 // end region
 
-
+// --------------------- SETUP ---------------------
 void setup() {
   pinMode(radioChipSelect, OUTPUT);
   pinMode(sdChipSelect, OUTPUT);
-  gpsSerial.begin(9600);
+  gpsSerial.begin(gpsSerialBaud);
+  baseStationConnection.begin(debugSerialBaud);
 
-  dataModule.setDebugMode(serialDebugMode); // set debug flag in library instance
-  dataModule.initialize();                  // setup data module
-
-  delay(1000);
-
-  rf22.initialize();
-
-  rf22InterruptTimer.begin(transmit, rfmBitSpacingMicroseconds);
-  setupGPS();
-
-
-  // Notify dataModule to flush init buffers
-  dataModule.initComplete();
+  runInitialisationRoutine();
 }
 
+// --------------------- LOOP ---------------------
 void loop() {
+  i += 1;
   readGPS();
   rf22.enqueueMessage(getGPSMessageString());
-  delay(1000);
+
+  sendStateUpdate("GPSLAT=" + String(-41.288 + (i*0.00005), 5));
+  sendStateUpdate("GPSLNG=" + String(174.762 + (i*0.00005), 5));
+  sendStateUpdate(getGPSLockingMessage());
+  delay(10);
 }
 
+
+// -------- RADIO AND INIT FUNCTIONS ----------
+/*
+Function used in as the RFM22 interrupt handler for timer driven radio communication
+*/
 void transmit() {
   rf22.transmitBuffer();
 }
 
+/*
+Function to be called to begin initialisation flow. Takes commands from base station,
+initialises components and reports state updates. More on these state messages can be found in
+base-station-sketch.ino
+*/
+void runInitialisationRoutine() {
+  String commandMessage = receiveCommand();
+
+  if (commandMessage == "start") {
+    sendAcknowledge();
+
+    // set debug flag in library instance
+    dataModule.setDebugMode(serialDebugMode);
+    // Send result of initialisation to base station
+    sendStateUpdate(dataModule.initialize() ? "DM=OK" : "DM=FAIL");
+
+    sendStateUpdate(rf22.initialize() ? "RFM=OK" : "RFM=FAIL");
+    rf22InterruptTimer.begin(transmit, rfmBitSpacingMicroseconds);
+
+    sendStateUpdate("GPS=locking");
+    sendStateUpdate(setupGPS() ? "GPS=ready" : "GPS=skipped");
+
+    // Notify dataModule to flush init buffers
+    dataModule.initComplete();
+
+    commandMessage = receiveCommand();
+
+    if (commandMessage == "begin") {
+      sendAcknowledge();
+    } else {
+      while (true);
+    }
+  }
+}
+
 // Function for waiting for GPS communication and locking
-void setupGPS() {
+boolean setupGPS() {
   for (int i = 0; !gps.location.isUpdated(); i++) {
     readGPS();
+    readMessageStream();
     delay(20);
     // Only print locking information every 50 iterations
     if (i % 50 == 0) {
       rf22.enqueueMessage(getGPSLockingMessage());
 
       dataModule.println("Checksum passed/failed: " + String(gps.passedChecksum(), DEC) + "/" + String(gps.failedChecksum(), DEC) + " Sats in view: " + satsInView.value());
+
+      sendStateUpdate(getGPSLockingMessage());
       // Used for flushing SD card buffer when not in debug mode
       dataModule.flushBuffer();
+    } else if (skipGps) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
+// -------- BASE-STATION COMMUNICATION FUNCTIONS ----------
+/*
+Function for sending message over base station communication channel
+*/
+void sendMessage(String message) {
+  baseStationConnection.println(message);
+}
+
+/*
+Function for sending state update message over base station communication channel
+as well as printing the state update to the dataModule instance
+*/
+void sendStateUpdate(String message) {
+    baseStationConnection.print(message + ";");
+    dataModule.println("State update: " + message);
+}
+
+/*
+Function for sending acknowledge message over base station communication channel
+*/
+void sendAcknowledge() {
+  sendMessage("ok");
+}
+
+/*
+Function for reading from the message steam being recieved from the base station.
+Takes a command, splits the newline and/or cariage return character from the end
+and flushes anything that's left in the inbound serial buffer
+*/
+void readMessageStream() {
+  while (baseStationConnection.available()) {
+    char rec = baseStationConnection.read();
+    if (String(rec) == "\n" || String(rec) == "\r") {
+      if (baseStationBuffer == "skip_gps") {
+        skipGps = true;
+        sendAcknowledge();
+      }
+
+      baseStationBuffer = "";
+      flushSerialBuffer();
+    } else {
+      baseStationBuffer += String(rec);
     }
   }
 }
@@ -116,8 +210,48 @@ void readGPS() {
   }
 }
 
+/*
+Blocking function used to wait for receiving commands from the base station. Blocks until entire command is recieved
+*/
+String receiveCommand() {
+  // Block until command recieved
+  while (!baseStationConnection.available());
+
+  String recieved;
+  boolean stringComplete = false;
+  while (!stringComplete) {
+    // Only try read a char if it's available
+    if (baseStationConnection.available()) {
+       char recChar = baseStationConnection.read();
+      // Complete the command if nl/cr found, else concat char onto command
+       if (String(recChar) == "\n" || String(recChar) == "\r") {
+          stringComplete = true;
+        } else {
+          recieved += String(recChar);
+        }
+    }
+  }
+
+  // Clear out what's left in the buffer
+  flushSerialBuffer();
+
+  return recieved;
+}
+
+// Stupid hack to clear out any remaining character
+void flushSerialBuffer() {
+  while (baseStationConnection.available()) {
+    baseStationConnection.read();
+  }
+}
+
+// ----------------- UTILITY FUNCTIONS ----------------------
 String getGPSMessageString() {
-    return rfmMessagePilot + (String(gps.location.lat(), gpsDecimalPoints) + "," + String(gps.location.lng(), gpsDecimalPoints) + ",");
+    if (gps.location.lat() == 0 || gps.location.lng() == 0) {
+      return rfmMessagePilot + getGPSLockingMessage();
+    } else {
+      return rfmMessagePilot + (String(gps.location.lat(), gpsDecimalPoints) + "," + String(gps.location.lng(), gpsDecimalPoints) + ",");
+    }
 }
 
 String getGPSLockingMessage() {
@@ -125,5 +259,5 @@ String getGPSLockingMessage() {
   if (inView.length() < 2) {
     inView = "00";
   }
-  return String(rfmMessagePilot) + "SIV=" + String(inView);
+  return "GPSVIS=" + String(inView);
 }
